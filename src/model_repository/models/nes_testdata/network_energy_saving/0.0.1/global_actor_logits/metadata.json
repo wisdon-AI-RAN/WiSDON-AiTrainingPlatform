@@ -1,0 +1,12 @@
+{
+  "project_id": "nes_testdata",
+  "app_name": "network_energy_saving",
+  "version": "0.0.1",
+  "model_name": "global_actor_logits",
+  "original_filename": "final_global_actor_logits.onnx",
+  "content_type": null,
+  "upload_timestamp": "2025-12-24T04:28:27.797048+00:00",
+  "size": 61536,
+  "description": "Final global actor logits model exported to ONNX",
+  "framework": "pytorch"
+}

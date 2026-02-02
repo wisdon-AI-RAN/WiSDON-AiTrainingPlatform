@@ -1,0 +1,12 @@
+{
+  "project_id": "ED8F",
+  "app_name": "NES",
+  "version": "0.0.1",
+  "model_name": "global_actor_logits",
+  "original_filename": "final_global_actor_logits.onnx",
+  "content_type": null,
+  "upload_timestamp": "2026-01-14T19:24:56.154574+00:00",
+  "size": 59874,
+  "description": "Final global actor logits model exported to ONNX",
+  "framework": "pytorch"
+}

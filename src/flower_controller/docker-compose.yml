@@ -1,0 +1,121 @@
+services:
+  mongodb:
+    image: mongo
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+    networks:
+      - aitrplat
+    restart: unless-stopped
+
+  superlink:
+    image: flwr/superlink:1.25.0
+    container_name: superlink
+    command:
+      - --insecure
+      - --isolation
+      - process
+    ports:
+      - "9091:9091"
+      - "9092:9092"
+      - "9093:9093"
+    networks:
+      - aitrplat
+    restart: unless-stopped
+
+  supernode-1:
+    image: flwr/supernode:1.25.0
+    container_name: supernode-1
+    command:
+      - --insecure
+      - --superlink
+      - superlink:9092
+      - --node-config
+      - "partition-id=0 num-partitions=1"
+      - --clientappio-api-address
+      - 0.0.0.0:9094
+      - --isolation
+      - process
+    ports:
+      - "9094:9094"
+    networks:
+      - aitrplat
+    depends_on:
+      - superlink
+    restart: unless-stopped
+
+  flower-controller:
+    build: .
+    image: flower-controller:0.0.1
+    container_name: flower-controller
+    ports:
+      - "9005:9000"
+    volumes:
+      - ./:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      - aitrplat
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/state"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  superexec-serverapp:
+    build:
+      context: ./app/network-energy-saving
+      dockerfile: superexec.Dockerfile
+    image: flwr_superexec:0.0.1
+    container_name: superexec-serverapp
+    command:
+      - --insecure
+      - --plugin-type
+      - serverapp
+      - --appio-api-address
+      - superlink:9091
+    networks:
+      - aitrplat
+    depends_on:
+      - superlink
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  superexec-clientapp-1:
+    image: flwr_superexec:0.0.1
+    container_name: superexec-clientapp-1
+    command:
+      - --insecure
+      - --plugin-type
+      - clientapp
+      - --appio-api-address
+      - supernode-1:9094
+    networks:
+      - aitrplat
+    depends_on:
+      - supernode-1
+      - superexec-serverapp
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  mongodb-data:
+
+networks:
+  aitrplat:
+    external: true
