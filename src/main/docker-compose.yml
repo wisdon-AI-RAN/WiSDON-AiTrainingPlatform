@@ -54,7 +54,7 @@ services:
 
   flower-controller:
     build: 
-      context: .
+      context: ./api_server_controller
       dockerfile: Dockerfile
     image: flower-controller:0.0.1
     container_name: flower-controller
