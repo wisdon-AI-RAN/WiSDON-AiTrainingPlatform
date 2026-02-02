@@ -1,2 +1,0 @@
-docker cp ./app/network-energy-saving/network_energy_saving/environment.py flower-controller:/app/app/network-energy-saving/network_energy_saving/environment.py
-docker cp ./app/network-energy-saving/network_energy_saving/client_app.py flower-controller:/app/app/network-energy-saving/network_energy_saving/client_app.py
