@@ -1,0 +1,25 @@
+version: '3.3'
+
+services:
+  flower-controller:
+    build: .
+    container_name: flower-controller
+    ports:
+      - "9000:9000"
+    restart: unless-stopped
+    networks:
+      - aitrplat
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Optional: Mount for logs
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/state"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  aitrplat:
+    external: true

@@ -1,0 +1,166 @@
+# version: '3.3'
+services:
+  mongodb:
+    image: mongo
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+    networks:
+      - aitrplat
+    restart: unless-stopped
+
+  mongodb_compcommondb:
+    image: mongo
+    container_name: mongodb_compcommondb
+    ports:
+      - "27019:27017"
+    volumes:
+      - mongodb-compcommondb-data:/data/db
+    restart: unless-stopped
+
+  mongodb_aitrplatcommondb:
+    image: mongo
+    container_name: mongodb_aitrplatcommondb
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongodb-aitrplatcommondb-data:/data/db
+    restart: unless-stopped
+
+  mongodb_aodtcommondb:
+    image: mongo
+    container_name: mongodb_aodtcommondb
+    ports:
+      - "27020:27017"
+    volumes:
+      - mongodb-aodtcommondb-data:/data/db
+    restart: unless-stopped
+
+  superlink:
+    image: flwr/superlink:1.25.0
+    container_name: superlink
+    command:
+      - --insecure
+      - --isolation
+      - process
+    ports:
+      - "9091:9091"
+      - "9092:9092"
+      - "9093:9093"
+    networks:
+      - aitrplat
+    restart: unless-stopped
+
+  supernode-1:
+    image: flwr/supernode:1.25.0
+    container_name: supernode-1
+    command:
+      - --insecure
+      - --superlink
+      - superlink:9092
+      - --node-config
+      - "partition-id=0 num-partitions=1"
+      - --clientappio-api-address
+      - 0.0.0.0:9094
+      - --isolation
+      - process
+    ports:
+      - "9094:9094"
+    networks:
+      - aitrplat
+    depends_on:
+      - superlink
+    restart: unless-stopped
+
+  model-repository:
+    build: ./src/model_repository
+    container_name: ai-model-repository
+    ports:
+      - "27016:8000"
+    volumes:
+      - ./src/model_repository/models:/app/models
+    environment:
+      - MODEL_STORAGE_PATH=/app/models
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8000
+    networks:
+      - aitrplat
+    restart: unless-stopped
+
+  flower-controller:
+    build: ./src/flower_controller
+    container_name: flower-controller
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./src/flower_controller/logs:/app/logs
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      - aitrplat
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/state"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  superexec-serverapp:
+    build:
+      context: ./src/flower_controller/app/network-energy-saving
+      dockerfile: superexec.Dockerfile
+    image: flwr_superexec:0.0.1
+    container_name: superexec-serverapp
+    command:
+      - --insecure
+      - --plugin-type
+      - serverapp
+      - --appio-api-address
+      - superlink:9091
+    networks:
+      - aitrplat
+    depends_on:
+      - superlink
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  superexec-clientapp-1:
+    image: flwr_superexec:0.0.1
+    container_name: superexec-clientapp-1
+    command:
+      - --insecure
+      - --plugin-type
+      - clientapp
+      - --appio-api-address
+      - supernode-1:9094
+    networks:
+      - aitrplat
+    depends_on:
+      - supernode-1
+      - superexec-serverapp
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  mongodb-data:
+  mongodb-compcommondb-data:
+  mongodb-aitrplatcommondb-data:
+  mongodb-aodtcommondb-data:
+
+networks:
+  aitrplat:
+    external: true

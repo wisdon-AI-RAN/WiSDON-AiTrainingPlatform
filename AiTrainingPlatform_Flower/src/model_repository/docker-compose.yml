@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  model-repository:
+    build: .
+    container_name: ai-model-repository
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models
+    environment:
+      - MODEL_STORAGE_PATH=/app/models
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8000
+    restart: unless-stopped
