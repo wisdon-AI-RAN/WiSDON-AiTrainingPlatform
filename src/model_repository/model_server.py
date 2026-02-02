@@ -3,7 +3,7 @@
 # HTTP server for saving and loading AI models.
 # =========================================================
 # Author: Benson Jao (WiSDON)
-# Date: 2025/12/24
+# Date: 2026/02/02
 # Version: 1.0.0
 # License: None
 #==========================================================
@@ -34,25 +34,26 @@ app = FastAPI(
 )
 
 
-def get_model_path(project_id: str, app_name: str, version: str, model_name: str) -> tuple:
+def get_model_path(project_id: str, app_name: str, model_name: str, version: str, component_name: str) -> tuple:
     """
     Get the file paths for a model
     Returns: (model_directory, model_file_path, metadata_path)
     """
-    model_dir = os.path.join(MODEL_STORAGE_PATH, project_id, app_name, version, model_name)
+    model_dir = os.path.join(MODEL_STORAGE_PATH, project_id, app_name, model_name, version, component_name)
     model_file = os.path.join(model_dir, "model.onnx")
     metadata_file = os.path.join(model_dir, "metadata.json")
     return model_dir, model_file, metadata_file
 
-def get_model_metadata(project_id: str, app_name: str, version: str, model_name: str) -> dict:
+def get_model_metadata(project_id: str, app_name: str, model_name: str, version: str, component_name: str) -> dict:
     """Get metadata for a model"""
-    model_dir, model_path, metadata_path = get_model_path(project_id, app_name, version, model_name)
+    model_dir, model_path, metadata_path = get_model_path(project_id, app_name, model_name, version, component_name)
     
     metadata = {
         "project_id": project_id,
         "app_name": app_name,
-        "version": version,
         "model_name": model_name,
+        "version": version,
+        "component_name": component_name,
         "exists": os.path.exists(model_path),
         "size": 0,
         "created_at": None,
@@ -84,11 +85,12 @@ async def root():
         "service": "AI Model Repository Server",
         "version": "1.0.0",
         "endpoints": {
-            "upload": "POST /models/upload?project_id=<id>&app_name=<name>&version=<ver>&model_name=<name>",
-            "download": "GET /models/{project_id}/{app_name}/{version}/{model_name}",
-            "list": "GET /models/list (or /models/{project_id} or /models/{project_id}/{app_name} or /models/{project_id}/{app_name}/{version})",
-            "delete": "DELETE /models/{project_id}/{app_name}/{version}/{model_name}",
-            "info": "GET /models/{project_id}/{app_name}/{version}/{model_name}/info",
+            "load": "POST /models/load?project_id=<id>&app_name=<name>&version=<ver>&model_name=<name>&component_name=<component>",
+            "upload": "POST /models/upload?project_id=<id>&app_name=<name>&version=<ver>&model_name=<name>&component_name=<component>",
+            "download": "GET /models/{project_id}/{app_name}/{model_name}/{version}/{component_name}",
+            "list": "GET /models/list (or /models/{project_id}, /models/{project_id}/{app_name}, /models/{project_id}/{app_name}/{model_name}, etc.)",
+            "delete": "DELETE /models/{project_id}/{app_name}/{model_name} (or /models/{project_id}/{app_name}/{model_name}/{version}, etc.)",
+            "info": "GET /models/{project_id}/{app_name}/{model_name}/{version}/{component_name}/info",
             "health": "GET /health"
         }
     }
@@ -104,49 +106,60 @@ async def health_check():
     }
 
 
-@app.post("/models/upload")
-async def upload_model(
-    file: UploadFile = File(...),
+@app.post("/models/load")
+async def load_model(
+    model_structure: UploadFile = File(..., description="Model structure file (.py, only support pytorch for now)"),
+    weights_file: UploadFile = File(..., description="Model weights file (.pt, only support pytorch for now)"),
     project_id: str = Query(..., description="Project ID"),
     app_name: str = Query(..., description="Application name"),
-    version: str = Query(..., description="Model version"),
     model_name: str = Query(..., description="Model name"),
+    version: str = Query(..., description="Model version"),
+    component_name: str = Query(..., description="Component name"),
     description: Optional[str] = Query(None, description="Model description"),
     framework: Optional[str] = Query(None, description="AI framework (pytorch, tensorflow, etc.)")
 ):
     """
-    Upload an AI model file
+    Load an AI model provided by the user.
     
-    - **file**: Model file to upload
+    - **model_structure**: Model structure file (.py, only support pytorch for now)
+    - **weights_file**: Model weights file (.pt, only support pytorch for now)
     - **project_id**: Project identifier (required)
     - **app_name**: Application name (required)
-    - **version**: Model version (required)
     - **model_name**: Model name (required)
+    - **version**: Model version (required)
+    - **component_name**: Component name (required)
     - **description**: Optional description
     - **framework**: Optional framework name
     """
     try:
         # Get model paths
-        model_dir, model_path, metadata_path = get_model_path(project_id, app_name, version, model_name)
+        model_dir, model_path, metadata_path = get_model_path(project_id, app_name, model_name, version, component_name)
         
         # Create directory structure
         Path(model_dir).mkdir(parents=True, exist_ok=True)
         
         # Save the uploaded file
-        content = await file.read()
-        with open(model_path, "wb") as f:
+        content = await model_structure.read()
+        model_structure_path = os.path.join(model_dir, "model.py")
+        with open(model_structure_path, "wb") as f:
+            f.write(content)
+
+        content = await weights_file.read()
+        weights_file_path = os.path.join(model_dir, "model.pt")
+        with open(weights_file_path, "wb") as f:
             f.write(content)
         
         # Save metadata
         metadata = {
             "project_id": project_id,
             "app_name": app_name,
-            "version": version,
             "model_name": model_name,
-            "original_filename": file.filename,
-            "content_type": file.content_type,
+            "version": version,
+            "component_name": component_name,
+            "original_filename": model_structure.filename,
+            "content_type": model_structure.content_type,
             "upload_timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            "size": len(content)
+            "size": os.path.getsize(weights_file_path)
         }
         
         if description:
@@ -163,9 +176,84 @@ async def upload_model(
                 "message": "Model uploaded successfully",
                 "project_id": project_id,
                 "app_name": app_name,
-                "version": version,
                 "model_name": model_name,
-                "size": len(content),
+                "version": version,
+                "component_name": component_name,
+                "size": os.path.getsize(weights_file_path),
+                "path": model_dir
+            }
+        )
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+    
+
+@app.post("/models/upload")
+async def upload_onnx_model(
+    file: UploadFile = File(...),
+    project_id: str = Query(..., description="Project ID"),
+    app_name: str = Query(..., description="Application name"),
+    model_name: str = Query(..., description="Model name"),
+    version: str = Query(..., description="Model version"),
+    component_name: str = Query(..., description="Component name"),
+    description: Optional[str] = Query(None, description="Model description"),
+    framework: Optional[str] = Query(None, description="AI framework (pytorch, tensorflow, etc.)")
+):
+    """
+    Upload an AI model file in ONNX format.
+    
+    - **file**: Model file to upload
+    - **project_id**: Project identifier (required)
+    - **app_name**: Application name (required)
+    - **model_name**: Model name (required)
+    - **version**: Model version (required)
+    - **component_name**: Component name (required)
+    - **description**: Optional description
+    - **framework**: Optional framework name
+    """
+    try:
+        # Get model paths
+        model_dir, model_path, metadata_path = get_model_path(project_id, app_name, model_name, version, component_name)
+        
+        # Create directory structure
+        Path(model_dir).mkdir(parents=True, exist_ok=True)
+        
+        # Save the uploaded file
+        content = await file.read()
+        with open(model_path, "wb") as f:
+            f.write(content)
+        
+        # Save metadata
+        metadata = {
+            "project_id": project_id,
+            "app_name": app_name,
+            "model_name": model_name,
+            "version": version,
+            "component_name": component_name,
+            "original_filename": file.filename,
+            "content_type": file.content_type,
+            "upload_timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "size": os.path.getsize(model_path)
+        }
+        
+        if description:
+            metadata["description"] = description
+        if framework:
+            metadata["framework"] = framework
+        
+        with open(metadata_path, 'w') as f:
+            json.dump(metadata, f, indent=2)
+        
+        return JSONResponse(
+            status_code=201,
+            content={
+                "message": "Model uploaded successfully",
+                "project_id": project_id,
+                "app_name": app_name,
+                "model_name": model_name,
+                "version": version,
+                "component_name": component_name,
+                "size": os.path.getsize(model_path),
                 "path": model_path
             }
         )
@@ -174,29 +262,30 @@ async def upload_model(
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 
-@app.get("/models/{project_id}/{app_name}/{version}/{model_name}")
-async def download_model(project_id: str, app_name: str, version: str, model_name: str):
+@app.get("/models/{project_id}/{app_name}/{model_name}/{version}/{component_name}")
+async def download_model(project_id: str, app_name: str, model_name: str, version: str, component_name: str):
     """
     Download a model file
     
     - **project_id**: Project identifier
     - **app_name**: Application name
-    - **version**: Model version
     - **model_name**: Model name
+    - **version**: Model version
+    - **component_name**: Component name
     """
-    model_dir, model_path, metadata_path = get_model_path(project_id, app_name, version, model_name)
+    model_dir, model_path, metadata_path = get_model_path(project_id, app_name, model_name, version, component_name)
     
     if not os.path.exists(model_path):
         raise HTTPException(
             status_code=404, 
-            detail=f"Model not found: project_id='{project_id}', app_name='{app_name}', version='{version}', model_name='{model_name}'"
+            detail=f"Model not found: project_id='{project_id}', app_name='{app_name}', model_name='{model_name}', version='{version}', component_name='{component_name}'"
         )
     
     if not os.path.isfile(model_path):
         raise HTTPException(status_code=400, detail="Path is not a file")
     
     # Generate a meaningful filename for download
-    download_filename = f"{project_id}_{app_name}_{version}_{model_name}"
+    download_filename = f"{project_id}_{app_name}_{model_name}_{version}_{component_name}"
     
     return FileResponse(
         path=model_path,
@@ -225,20 +314,25 @@ async def list_all_models():
                     if not os.path.isdir(app_path):
                         continue
                     
-                    for version in os.listdir(app_path):
-                        version_path = os.path.join(app_path, version)
-                        if not os.path.isdir(version_path):
+                    for model_name in os.listdir(app_path):
+                        model_name_path = os.path.join(app_path, model_name)
+                        if not os.path.isdir(model_name_path):
                             continue
                         
-                        for model_name in os.listdir(version_path):
-                            model_name_path = os.path.join(version_path, model_name)
-                            if not os.path.isdir(model_name_path):
+                        for version in os.listdir(model_name_path):
+                            version_path = os.path.join(model_name_path, version)
+                            if not os.path.isdir(version_path):
                                 continue
                             
-                            model_file = os.path.join(model_name_path, "model.onnx")
-                            if os.path.exists(model_file):
-                                metadata = get_model_metadata(project_id, app_name, version, model_name)
-                                models.append(metadata)
+                            for component_name in os.listdir(version_path):
+                                component_path = os.path.join(version_path, component_name)
+                                if not os.path.isdir(component_path):
+                                    continue
+
+                                model_file = os.path.join(component_path, "model.onnx")
+                                if os.path.exists(model_file):
+                                    metadata = get_model_metadata(project_id, app_name, model_name, version, component_name)
+                                    models.append(metadata)
         
         return {
             "total_models": len(models),
@@ -272,20 +366,25 @@ async def list_project_models(project_id: str):
             if not os.path.isdir(app_path):
                 continue
             
-            for version in os.listdir(app_path):
-                version_path = os.path.join(app_path, version)
-                if not os.path.isdir(version_path):
+            for model_name in os.listdir(app_path):
+                model_name_path = os.path.join(app_path, model_name)
+                if not os.path.isdir(model_name_path):
                     continue
                 
-                for model_name in os.listdir(version_path):
-                    model_name_path = os.path.join(version_path, model_name)
-                    if not os.path.isdir(model_name_path):
+                for version in os.listdir(model_name_path):
+                    version_path = os.path.join(model_name_path, version)
+                    if not os.path.isdir(version_path):
                         continue
+
+                    for component_name in os.listdir(version_path):
+                        component_path = os.path.join(version_path, component_name)
+                        if not os.path.isdir(component_path):
+                            continue
                     
-                    model_file = os.path.join(model_name_path, "model.onnx")
-                    if os.path.exists(model_file):
-                        metadata = get_model_metadata(project_id, app_name, version, model_name)
-                        models.append(metadata)
+                        model_file = os.path.join(component_path, "model.onnx")
+                        if os.path.exists(model_file):
+                            metadata = get_model_metadata(project_id, app_name, model_name, version, component_name)
+                            models.append(metadata)
         
         return {
             "project_id": project_id,
@@ -300,7 +399,7 @@ async def list_project_models(project_id: str):
 @app.get("/models/{project_id}/{app_name}")
 async def list_app_models(project_id: str, app_name: str):
     """
-    List all versions for a specific project and app
+    List all model names for a specific project and app
     
     - **project_id**: Project identifier
     - **app_name**: Application name
@@ -317,20 +416,25 @@ async def list_app_models(project_id: str, app_name: str):
                 "models": []
             }
         
-        for version in os.listdir(app_path):
-            version_path = os.path.join(app_path, version)
-            if not os.path.isdir(version_path):
+        for model_name in os.listdir(app_path):
+            model_name_path = os.path.join(app_path, model_name)
+            if not os.path.isdir(model_name_path):
                 continue
             
-            for model_name in os.listdir(version_path):
-                model_name_path = os.path.join(version_path, model_name)
-                if not os.path.isdir(model_name_path):
+            for version in os.listdir(model_name_path):
+                version_path = os.path.join(model_name_path, version)
+                if not os.path.isdir(version_path):
                     continue
                 
-                model_file = os.path.join(model_name_path, "model.onnx")
-                if os.path.exists(model_file):
-                    metadata = get_model_metadata(project_id, app_name, version, model_name)
-                    models.append(metadata)
+                for component_name in os.listdir(version_path):
+                    component_path = os.path.join(version_path, component_name)
+                    if not os.path.isdir(component_path):
+                        continue
+                    
+                    model_file = os.path.join(component_path, "model.onnx")
+                    if os.path.exists(model_file):
+                        metadata = get_model_metadata(project_id, app_name, model_name, version, component_name)
+                        models.append(metadata)
         
         return {
             "project_id": project_id,
@@ -343,37 +447,42 @@ async def list_app_models(project_id: str, app_name: str):
         raise HTTPException(status_code=500, detail=f"Failed to list models: {str(e)}")
 
 
-@app.get("/models/{project_id}/{app_name}/{version}")
-async def list_version_models(project_id: str, app_name: str, version: str):
+@app.get("/models/{project_id}/{app_name}/{model_name}")
+async def list_model_versions(project_id: str, app_name: str, model_name: str):
     """
-    List all models for a specific project, app and version
+    List all versions for a specific project, app and model
     
     - **project_id**: Project identifier
     - **app_name**: Application name
-    - **version**: Model version
+    - **model_name**: Model name
     """
     try:
         models = []
-        version_path = os.path.join(MODEL_STORAGE_PATH, project_id, app_name, version)
+        model_name_path = os.path.join(MODEL_STORAGE_PATH, project_id, app_name, model_name)
         
-        if not os.path.exists(version_path):
+        if not os.path.exists(model_name_path):
             return {
                 "project_id": project_id,
                 "app_name": app_name,
-                "version": version,
+                "model_name": model_name,
                 "total_models": 0,
                 "models": []
             }
         
-        for model_name in os.listdir(version_path):
-            model_name_path = os.path.join(version_path, model_name)
-            if not os.path.isdir(model_name_path):
+        for version in os.listdir(model_name_path):
+            version_path = os.path.join(model_name_path, version)
+            if not os.path.isdir(version_path):
                 continue
             
-            model_file = os.path.join(model_name_path, "model.onnx")
-            if os.path.exists(model_file):
-                metadata = get_model_metadata(project_id, app_name, version, model_name)
-                models.append(metadata)
+            for component_name in os.listdir(version_path):
+                component_path = os.path.join(version_path, component_name)
+                if not os.path.isdir(component_path):
+                    continue
+                
+                model_file = os.path.join(component_path, "model.onnx")
+                if os.path.exists(model_file):
+                    metadata = get_model_metadata(project_id, app_name, model_name, version, component_name)
+                    models.append(metadata)
         
         return {
             "project_id": project_id,
@@ -387,44 +496,81 @@ async def list_version_models(project_id: str, app_name: str, version: str):
         raise HTTPException(status_code=500, detail=f"Failed to list models: {str(e)}")
 
 
-@app.get("/models/{project_id}/{app_name}/{version}/{model_name}/info")
-async def get_model_info(project_id: str, app_name: str, version: str, model_name: str):
+@app.get("/models/{project_id}/{app_name}/{model_name}/{version}/{component_name}/info")
+async def get_model_info(project_id: str, app_name: str, model_name: str, version: str, component_name: str):
     """
     Get detailed information about a specific model
     
     - **project_id**: Project identifier
     - **app_name**: Application name
-    - **version**: Model version
     - **model_name**: Model name
+    - **version**: Model version
+    - **component_name**: Component name
     """
-    model_dir, model_path, metadata_path = get_model_path(project_id, app_name, version, model_name)
+    model_dir, model_path, metadata_path = get_model_path(project_id, app_name, model_name, version, component_name)
     
     if not os.path.exists(model_path):
         raise HTTPException(
             status_code=404,
-            detail=f"Model not found: project_id='{project_id}', app_name='{app_name}', version='{version}', model_name='{model_name}'"
+            detail=f"Model not found: project_id='{project_id}', app_name='{app_name}', model_name='{model_name}', version='{version}', component_name='{component_name}'"
         )
     
-    metadata = get_model_metadata(project_id, app_name, version, model_name)
+    metadata = get_model_metadata(project_id, app_name, model_name, version, component_name)
     return metadata
 
 
-@app.delete("/models/{project_id}/{app_name}/{version}/{model_name}")
-async def delete_model(project_id: str, app_name: str, version: str, model_name: str):
+@app.delete("/models/{project_id}/{app_name}/{model_name}/{version}/{component_name}")
+async def delete_component(project_id: str, app_name: str, model_name: str, version: str, component_name: str):
+    """
+    Delete a component from the repository
+    
+    - **project_id**: Project identifier
+    - **app_name**: Application name
+    - **model_name**: Model name
+    - **version**: Model version
+    - **component_name**: Component name
+    """
+    model_dir, model_path, metadata_path = get_model_path(project_id, app_name, model_name, version, component_name)
+    
+    if not os.path.exists(model_path):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Model not found: project_id='{project_id}', app_name='{app_name}', model_name='{model_name}', version='{version}', component_name='{component_name}'"
+        )
+    
+    try:
+        # Delete entire component directory
+        if os.path.exists(model_dir):
+            shutil.rmtree(model_dir)
+        
+        return {
+            "message": "Component deleted successfully",
+            "project_id": project_id,
+            "app_name": app_name,
+            "model_name": model_name,
+            "version": version,
+            "component_name": component_name
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete component: {str(e)}")
+
+@app.delete("/models/{project_id}/{app_name}/{model_name}/{version}")
+async def delete_model_version(project_id: str, app_name: str, model_name: str, version: str):
     """
     Delete a model from the repository
     
     - **project_id**: Project identifier
     - **app_name**: Application name
-    - **version**: Model version
     - **model_name**: Model name
+    - **version**: Model version
     """
-    model_dir, model_path, metadata_path = get_model_path(project_id, app_name, version, model_name)
+    model_dir = os.path.join(MODEL_STORAGE_PATH, project_id, app_name, model_name, version)
     
-    if not os.path.exists(model_path):
+    if not os.path.exists(model_dir):
         raise HTTPException(
             status_code=404,
-            detail=f"Model not found: project_id='{project_id}', app_name='{app_name}', version='{version}', model_name='{model_name}'"
+            detail=f"Model not found: project_id='{project_id}', app_name='{app_name}', model_name='{model_name}', version='{version}'"
         )
     
     try:
@@ -436,13 +582,46 @@ async def delete_model(project_id: str, app_name: str, version: str, model_name:
             "message": "Model deleted successfully",
             "project_id": project_id,
             "app_name": app_name,
-            "version": version,
-            "model_name": model_name
+            "model_name": model_name,
+            "version": version
         }
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete model: {str(e)}")
 
+
+@app.delete("/models/{project_id}/{app_name}/{model_name}")
+async def delete_model(project_id: str, app_name: str, model_name: str):
+    """
+    Delete a model from the repository
+    
+    - **project_id**: Project identifier
+    - **app_name**: Application name
+    - **model_name**: Model name
+    """
+    model_dir = os.path.join(MODEL_STORAGE_PATH, project_id, app_name, model_name)
+    
+    if not os.path.exists(model_dir):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Model not found: project_id='{project_id}', app_name='{app_name}', model_name='{model_name}'"
+        )
+    
+    try:
+        # Delete entire model directory
+        if os.path.exists(model_dir):
+            shutil.rmtree(model_dir)
+        
+        return {
+            "message": "Model deleted successfully",
+            "project_id": project_id,
+            "app_name": app_name,
+            "model_name": model_name
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete model: {str(e)}")
+    
 
 if __name__ == "__main__":
     print(f"Starting AI Model Repository Server")
