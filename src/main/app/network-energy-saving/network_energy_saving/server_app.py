@@ -90,23 +90,24 @@ def main(grid: Grid, context: Context) -> None:
     )
 
     # Save final model to disk
-    # print("\nSaving final model to disk...")
-    # state_dict = result.arrays.to_torch_state_dict()
-    # torch.save(state_dict, "final_model.pt")
-    
     print("\nSaving final model to disk...")
+    # update the model version (e.g., 1.0.0 -> 1.0.1) for the new model to be uploaded to the Model Repository
+    new_model_version = ".".join(model_version.split(".")[:-1] + [str(int(model_version.split(".")[-1]) + 1)])
+    print(f"New model version: {new_model_version}")
+    os.makedirs(f"./models/{project_id}/{app_name}/{model_name}/{new_model_version}", exist_ok=True)
+
     actor_sd, critic_sd = unpack_model_arrays(result.arrays)
     final_global_actor = actor_sd
     final_global_critic = critic_sd
-    torch.save(final_global_actor, f"./models/{project_id}/{app_name}/{model_name}/{model_version}/final_global_actor.pt")
-    torch.save(final_global_critic, f"./models/{project_id}/{app_name}/{model_name}/{model_version}/final_global_critic.pt")
+    torch.save(final_global_actor, f"./models/{project_id}/{app_name}/{model_name}/{new_model_version}/final_global_actor.pt")
+    torch.save(final_global_critic, f"./models/{project_id}/{app_name}/{model_name}/{new_model_version}/final_global_critic.pt")
 
     global_actor.load_state_dict(final_global_actor, strict = True)
     global_critic.load_state_dict(final_global_critic, strict = True)
 
     # Save model in onnx format (Only actor is needed for inference)
     try:
-        onnx_path = f"./models/{project_id}/{app_name}/{model_name}/{model_version}/final_global_actor_logits.onnx"
+        onnx_path = f"./models/{project_id}/{app_name}/{model_name}/{new_model_version}/final_global_actor_logits.onnx"
         export_onnx(global_actor, onnx_path, n_feats=n_feats, total_bs=total_bs)
         # onnx_path = "./models/final_global_critic_logits.onnx"
         # export_onnx(global_critic, onnx_path, n_feats=n_feats, total_bs=total_bs)
@@ -120,12 +121,13 @@ def main(grid: Grid, context: Context) -> None:
         print("[ERROR CODE 300: FLOWER_INTERNAL_ERROR] MODEL_REPOSITORY_URL environment variable not set. Skipping model upload.")
         return
     client = ModelRepositoryClient(base_url=model_repository_url)
+
     upload_result = client.upload_model(
-        file_path=f"./models/{project_id}/{app_name}/{model_name}/{model_version}/final_global_actor_logits.onnx",
+        file_path=f"./models/{project_id}/{app_name}/{model_name}/{new_model_version}/final_global_actor_logits.onnx",
         project_id=project_id,
         app_name=app_name,
         model_name=model_name,
-        version=model_version,
+        version=new_model_version,
         component_name="global_actor_logits",
         description=f"Mode:{mode}, Final global actor logits model exported to ONNX",     
         framework="pytorch"

@@ -71,16 +71,21 @@ def train(msg: Message, context: Context):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     actor.to(device)
     critic.to(device)
+
+    # Load dataset from MongoDB
+    # partition_id = context.node_config["partition-id"]
+    # num_partitions = context.node_config["num-partitions"]
+    data_loader = DataLoader(app_name = app_name,
+                    project_id = project_id,
+                    model_name = model_name,
+                    model_version = model_version,
+                    mode = mode,
+                    dataset_name = dataset_name)
+    
+    train_dataset, valid_dataset = data_loader.create_dataset(episode=0,split=0,random_seed=42)
  
     if mode == "retrain":
         # Load the data
-        # partition_id = context.node_config["partition-id"]
-        # num_partitions = context.node_config["num-partitions"]
-        data_loader = DataLoader(app_name = app_name,
-                    project_id = project_id,
-                    model_version = model_version)
-        train_dataset, valid_dataset = data_loader.create_dataset(episode=0,split=0)
-
         # Call the retraining function
         actor_loss, critic_loss = train_fn(
             actor,
@@ -96,7 +101,7 @@ def train(msg: Message, context: Context):
         )
     elif mode == "pretrain":
         # Call the pretraining function
-        actor_loss, critic_loss, reward_history, num_examples = pretrain_fn(
+        actor_loss, critic_loss, reward_history = pretrain_fn(
             actor,
             critic,
             train_dataset,
@@ -116,7 +121,7 @@ def train(msg: Message, context: Context):
         "actor_loss": actor_loss,
         "critic_loss": critic_loss,
         "reward": reward_history,
-        "num-examples": num_examples,
+        "num-examples": len(train_dataset),
     }
     metric_record = MetricRecord(metrics)
     content = RecordDict({"arrays": arrays_record, "metrics": metric_record})
@@ -175,14 +180,16 @@ def evaluate(msg: Message, context: Context):
     actor.to(device)
     critic.to(device)
 
+    # Load the data
+    # partition_id = context.node_config["partition-id"]
+    # num_partitions = context.node_config["num-partitions"]
+    data_loader = DataLoader(app_name = app_name,
+                project_id = project_id,
+                model_version = model_version)
+    _, test_dataset = data_loader.create_dataset(episode=0,split=0)
+
     if mode == "retrain":
-        # Load the data
-        # partition_id = context.node_config["partition-id"]
-        # num_partitions = context.node_config["num-partitions"]
-        data_loader = DataLoader(app_name = app_name,
-                    project_id = project_id,
-                    model_version = model_version)
-        _, test_dataset = data_loader.create_dataset(episode=0,split=0)
+        
 
         # Call the evaluation function
         actor_loss, critic_loss, eval_value = test_fn(

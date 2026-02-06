@@ -25,7 +25,7 @@ class ModelRepositoryClient:
         response.raise_for_status()
         return response.json()
     
-    def upload_model(self, file_path: str, project_id: str, app_name: str, model_name: str,
+    def upload_onnx_model(self, file_path: str, project_id: str, app_name: str, model_name: str,
                     version: str, component_name: str, description: str = None, framework: str = None):
         """
         Upload a model to the repository
