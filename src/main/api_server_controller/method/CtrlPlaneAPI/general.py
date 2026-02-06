@@ -2,7 +2,7 @@
 # Description: Define general Ctrl plane API. 
 # =========================================================
 # Author: Benson Jao (WiSDON)
-# Date: 2026/01/20
+# Date: 2026/02/06
 # Version: 0.1.0
 # License: None
 #==========================================================
@@ -41,7 +41,7 @@ class GeneralCtrlAPI:
                     }
                 }
             except Exception as e:
-                raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server-Connection failed: {e}")
+                raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server. Connection failed: {e}")
         
         # Show total tasks which waiting in the queue
         @self.router.get('/fl_task_queue/show_waiting', tags=['Show FL Retrain Event'])
@@ -50,7 +50,7 @@ class GeneralCtrlAPI:
                 queue_content = self.task_queue.get_queue_content(self.task_queue.fl_task_queue)
                 return {'queue_content': queue_content}
             except Exception as e:
-                raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server-Failed to show waiting retrain tasks: {e}")
+                raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server. Failed to show waiting retrain tasks: {e}")
         
         # Show current federated learning retrain task
         @self.router.get('/fl_task_queue/show_current', tags=['Show FL Retrain Event'])
@@ -58,7 +58,7 @@ class GeneralCtrlAPI:
             try:
                 return {'current_retrain': self.task_queue.fl_current_training_task}
             except Exception as e:
-                raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server-Failed to show current retrain task: {e}")
+                raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server. Failed to show current retrain task: {e}")
 
         # Show current task's participants
         # @self.router.get('/fl_retrain_participants/show_current', tags=['Show FL Retrain Event'])

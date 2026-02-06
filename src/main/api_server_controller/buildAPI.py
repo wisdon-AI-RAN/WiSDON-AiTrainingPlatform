@@ -8,6 +8,8 @@
 #==========================================================
 
 import logging
+import threading
+import time
 from typing import List, Optional, Dict
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
@@ -27,20 +29,38 @@ logger.addHandler(handler)
 main_controller = Controller(logger=logger)
 main_task_queue = TrainingTaskQueue(logger=logger)
 
+controller_thread = None
+controller_stop_event = threading.Event()
+
+def _controller_worker():
+    logger.info("Controller cycle thread started")
+    while not controller_stop_event.is_set():
+        try:
+            main_controller.task_queue_controller.run_cycle()
+            main_controller.flower_controller.run_cycle()
+        except Exception as exc:
+            logger.exception("Controller cycle error: %s", exc)
+        time.sleep(1)
+    logger.info("Controller cycle thread stopped")
+
 # Create events with start up and shutdown for api server
-# @asynccontextmanager
-# async def lifespan(app: FastAPI):
-#     logger.info("lifespan init !")
-#     processing_thread = threading.Thread(target=task_queue.fl_training_queue_pop, daemon=True)
-#     processing_thread.start()
-#     try:
-#         yield
-#     finally:
-#         logger.info("lifespan close !")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global controller_thread
+    logger.info("API lifespan init")
+    controller_stop_event.clear()
+    controller_thread = threading.Thread(target=_controller_worker, daemon=True)
+    controller_thread.start()
+    try:
+        yield
+    finally:
+        controller_stop_event.set()
+        if controller_thread and controller_thread.is_alive():
+            controller_thread.join(timeout=5)
+        logger.info("API lifespan close")
 
 # Initialize FastAPI application
-# app = FastAPI(title='WiSDON AI Training Platform - API Server', lifespan=lifespan)
-app = FastAPI(title='WiSDON AI Training Platform - API Server')
+app = FastAPI(title='WiSDON AI Training Platform - API Server', lifespan=lifespan)
 
 """
     Define api functions

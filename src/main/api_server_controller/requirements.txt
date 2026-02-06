@@ -3,3 +3,9 @@ uvicorn[standard]==0.24.0
 pydantic==2.5.0
 flwr == 1.25.0
 pymongo == 4.15.5
+matplotlib==3.10.7
+numpy>=2.3.5
+requests>=2.32.5
+onnxscript>=0.5.7
+torch>=2.9.1
+torchvision>=0.24.1

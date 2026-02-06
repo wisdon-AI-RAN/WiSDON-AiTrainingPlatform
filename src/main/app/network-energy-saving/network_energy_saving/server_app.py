@@ -23,23 +23,27 @@ def main(grid: Grid, context: Context) -> None:
     """Main entry point for the ServerApp."""
 
     # Connect to MongoDB and load training parameters
-    mongodb_url = os.environ.get("MONGODB_URL", "mongodb://mongodb:27017")
+    mongodb_url = os.environ.get("AITRCOMMONDB_URI")
+    if mongodb_url is None:
+        print("[ERROR CODE 300: FLOWER_INTERNAL_ERROR] AITRCOMMONDB_URI environment variable not set. Cannot connect to MongoDB.")
+        return
     client = MongoClient(mongodb_url)
-    database = client["Training_Configuration"]
-    collection = database["training_conf"]
+    database = client["TrainingConfig"]
+    collection = database["current_task"]
 
     # Query data from MongoDB
-    item_set = collection.find({
-        "project_id": "running"
+    item = collection.find_one({
+        "status": "running"
     })
 
-    for item in item_set:
-        project_id = item["project_id"]
-        app_name = item["app_name"]
-        model_version = item["model_version"]
-        mode = item["mode"]
-        epochs = item["epochs"]
-        learning_rate = item["learning_rate"] 
+    project_id = item["project_id"]
+    app_name = item["app_name"]
+    model_name = item["model_name"]
+    model_version = item["model_version"]
+    mode = item["mode"]
+    dataset_name = item["dataset_name"]
+    epochs = item["epochs"]
+    learning_rate = item["learning_rate"] 
 
     # Read run config
     fraction_train: float = context.run_config["fraction-train"]
@@ -94,15 +98,15 @@ def main(grid: Grid, context: Context) -> None:
     actor_sd, critic_sd = unpack_model_arrays(result.arrays)
     final_global_actor = actor_sd
     final_global_critic = critic_sd
-    torch.save(final_global_actor, "./models/final_global_actor.pt")
-    torch.save(final_global_critic, "./models/final_global_critic.pt")
+    torch.save(final_global_actor, f"./models/{project_id}/{app_name}/{model_name}/{model_version}/final_global_actor.pt")
+    torch.save(final_global_critic, f"./models/{project_id}/{app_name}/{model_name}/{model_version}/final_global_critic.pt")
 
     global_actor.load_state_dict(final_global_actor, strict = True)
     global_critic.load_state_dict(final_global_critic, strict = True)
 
     # Save model in onnx format (Only actor is needed for inference)
     try:
-        onnx_path = "./models/final_global_actor_logits.onnx"
+        onnx_path = f"./models/{project_id}/{app_name}/{model_name}/{model_version}/final_global_actor_logits.onnx"
         export_onnx(global_actor, onnx_path, n_feats=n_feats, total_bs=total_bs)
         # onnx_path = "./models/final_global_critic_logits.onnx"
         # export_onnx(global_critic, onnx_path, n_feats=n_feats, total_bs=total_bs)
@@ -111,21 +115,25 @@ def main(grid: Grid, context: Context) -> None:
 
     # Upload final model to Model Repository
     print("\nUploading final model to Model Repository...")
-    model_repository_url = os.environ.get("MODEL_REPOSITORY_URL", "http://ai-model-repository:8000")
+    model_repository_url = os.environ.get("MODEL_REPOSITORY_URL")
+    if model_repository_url is None:
+        print("[ERROR CODE 300: FLOWER_INTERNAL_ERROR] MODEL_REPOSITORY_URL environment variable not set. Skipping model upload.")
+        return
     client = ModelRepositoryClient(base_url=model_repository_url)
     upload_result = client.upload_model(
-        file_path="./models/final_global_actor_logits.onnx",
+        file_path=f"./models/{project_id}/{app_name}/{model_name}/{model_version}/final_global_actor_logits.onnx",
         project_id=project_id,
         app_name=app_name,
+        model_name=model_name,
         version=model_version,
-        model_name="global_actor_logits",
-        description="Final global actor logits model exported to ONNX",     
+        component_name="global_actor_logits",
+        description=f"Mode:{mode}, Final global actor logits model exported to ONNX",     
         framework="pytorch"
     )
     print(f"Upload actor result: {upload_result}")
 
     # result = client.upload_model(
-    #     file_path="./models/final_global_critic_logits.onnx",
+    #     file_path=f"./models/{project_id}/{app_name}/{model_name}/{model_version}/final_global_critic_logits.onnx",
     #     project_id=project_id,
     #     app_name=app_name,
     #     version=model_version,

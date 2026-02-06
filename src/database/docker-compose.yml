@@ -3,30 +3,30 @@ services:
     image: mongo
     container_name: mongodb_compcommondb
     ports:
-      - "27019:27017"
+      - "27029:27017"
     volumes:
       - mongodb-compcommondb-data:/data/db
     restart: unless-stopped
 
-  mongodb_aitrplatcommondb:
+  mongodb_aitrcommondb:
     image: mongo
-    container_name: mongodb_aitrplatcommondb
+    container_name: mongodb_aitrcommondb
     ports:
-      - "27018:27017"
+      - "27028:27017"
     volumes:
-      - mongodb-aitrplatcommondb-data:/data/db
+      - mongodb-aitrcommondb-data:/data/db
     restart: unless-stopped
 
-  mongodb_aodtcommondb:
+  mongodb_simcommondb:
     image: mongo
     container_name: mongodb_simcommondb
     ports:
-      - "27020:27017"
+      - "27030:27017"
     volumes:
       - mongodb-simcommondb-data:/data/db
     restart: unless-stopped
 
 volumes:
   mongodb-compcommondb-data:
-  mongodb-aitrplatcommondb-data:
+  mongodb-aitrcommondb-data:
   mongodb-simcommondb-data:

@@ -15,7 +15,7 @@ class DataLoader:
         self.db_name = app_name
         self.collection_name = project_id
         self.model_version = model_version
-        self.mongodb_URL = os.environ.get("MONGODB_URL", "mongodb://mongodb:27017")
+        self.mongodb_URL = os.environ.get("AITRCOMMONDB_URI")
 
     def load_data(self):
         data = np.load(self.file_path)

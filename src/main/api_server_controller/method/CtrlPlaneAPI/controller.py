@@ -2,12 +2,13 @@
 # Description: Define Ctrl plane API for controller, only called by AiTrPlat(server)
 # =========================================================
 # Author: Benson Jao (WiSDON)
-# Date: 2026/01/20
+# Date: 2026/02/06
 # Version: 0.1.0
 # License: None
 #==========================================================
 
 from asyncio.log import logger
+from logging import config
 import sys, os
 import requests
 from typing import List, Optional, Dict
@@ -81,7 +82,7 @@ class ControllerAPI:
                         is_task_queue_final=self.controller.task_queue_controller.is_final()
                     )
                 except Exception as e:
-                    raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server-Failed to show controller status: {e}")
+                    raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server. Failed to show controller status: {e}")
             
         # Reset controller
         @self.router.post('/fl_controller/reset', tags=['Flower Controller'])
@@ -103,7 +104,7 @@ class ControllerAPI:
                     }
                 except Exception as e:
                     self.logger.error(f"Error resetting controller: {e}")
-                    raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server-Failed to reset controller: {e}")
+                    raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server. Failed to reset controller: {e}")
                 
         
         # Raise flower controller task start event
@@ -112,14 +113,14 @@ class ControllerAPI:
             with threading.Lock():
                 try:
                     self.controller.flower_controller.ai_tr_plat.raise_task_start()
-                    self.controller.flower_controller.run_cycle()
+                    # self.controller.flower_controller.run_cycle()
                     self.logger.info("Flower Controller raises task start event")
                     return {
                         "status": "success",
                         "message": "Flower Controller task start event raised"
                     }
                 except Exception as e:
-                    raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server-Failed to raise task start event: {e}")
+                    raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server. Failed to raise task start event: {e}")
 
         def _run_flower_app(self, app_name):
             if app_name == "NES":
@@ -133,16 +134,16 @@ class ControllerAPI:
                     logger.info("Flower app completed successfully.")
                     # Trigger the controller
                     self.controller.flower_controller.ai_tr_plat.raise_training_complete()
-                    self.controller.flower_controller.run_cycle()
+                    # self.controller.flower_controller.run_cycle()
                 else:
                     # Trigger the controller
                     self.controller.flower_controller.ai_tr_plat.raise_internal_error()
-                    self.controller.flower_controller.run_cycle()
+                    # self.controller.flower_controller.run_cycle()
                     logger.error("Flower app exited with code %s", exit_code)
             except OSError as exc:
                 # Trigger the controller
                 self.controller.flower_controller.ai_tr_plat.raise_internal_error()
-                self.controller.flower_controller.run_cycle()
+                # self.controller.flower_controller.run_cycle()
                 logger.error("Failed to execute Flower app: %s", exc)
 
         # Raise flower controller start flower app
@@ -155,19 +156,40 @@ class ControllerAPI:
                     app_name = task_name["app_name"]
 
                     # Connect to MongoDB and save training parameters
-                    mongodb_url = os.environ.get("MONGODB_URL", "mongodb://mongodb:27017")
+                    mongodb_url = os.environ.get("AITRCOMMONDB_URI")
                     client = MongoClient(mongodb_url)
-                    database = client["Training_Configuration"]
-                    collection = database["training_conf"]
+                    database = client["TrainingConfig"]
+                    collection_name = f"{task_name['project_id']}_{task_name['app_name']}_{task_name['model_name']}_{task_name['model_version']}_{task_name['mode']}_{task_name['dataset_name']}"
+                    collection = database[collection_name]
 
                     # Update data into MongoDB
                     filter = {
                         "project_id": task_name["project_id"],
                         "app_name": task_name["app_name"],
+                        "model_name": task_name["model_name"],
                         "model_version": task_name["model_version"],
                         "mode": task_name["mode"],
+                        "dataset_name": task_name["dataset_name"]
                     }
                     collection.update_one(filter, {"$set": {"status": "running"}}, upsert=False)
+
+                    # Save current task name
+                    collection_list = database.list_collection_names()
+                    collection_name = "current_task"
+                    if collection_name in collection_list:
+                        database.drop_collection(collection_name)
+
+                    collection = database[collection_name]
+                    data = {
+                        "project_id": task_name["project_id"],
+                        "app_name": task_name["app_name"],
+                        "model_name": task_name["model_name"],
+                        "model_version": task_name["model_version"],
+                        "mode": task_name["mode"],
+                        "dataset_name": task_name["dataset_name"],
+                        "status": "running"
+                    }
+                    collection.insert_one(data)
 
                     threading.Thread(target=_run_flower_app, args=(self,app_name,), daemon=True).start()
                     logger.info("Flower app thread started.")
@@ -175,9 +197,9 @@ class ControllerAPI:
                     logger.error("Could not start Flower app thread: %s", exc)
                     # Trigger the controller
                     self.controller.flower_controller.ai_tr_plat.raise_internal_error()
-                    self.controller.flower_controller.run_cycle()
+                    # self.controller.flower_controller.run_cycle()
                 except Exception as e:
-                    raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server-Failed to raise task start event: {e}")
+                    raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server. Failed to raise task start event: {e}")
                 
         # Raise flower controller stop training event
         @self.router.post('/fl_controller/task_stop', tags=['Flower Controller'])
@@ -185,14 +207,14 @@ class ControllerAPI:
             with threading.Lock():
                 try:
                     self.controller.flower_controller.ai_tr_plat.raise_stop_training()
-                    self.controller.flower_controller.run_cycle()
+                    # self.controller.flower_controller.run_cycle()
                     self.logger.info("Flower Controller raises stop training event")
                     return {
                         "status": "success",
                         "message": "Flower Controller stop training event raised"
                     }
                 except Exception as e:
-                    raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server-Failed to raise stop training event: {e}")
+                    raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server. Failed to raise stop training event: {e}")
                 
         def _terminate_training(self):
             command = "kill -f 'flwr run'"
@@ -203,17 +225,17 @@ class ControllerAPI:
                     logger.info("Training process terminated successfully.")
                     # Trigger the controller
                     self.controller.flower_controller.ai_tr_plat.raise_termination_complete()
-                    self.controller.flower_controller.run_cycle()
+                    # self.controller.flower_controller.run_cycle()
                     logger.info("Flower Controller raises termination complete event")
                 else:
                     # Trigger the controller
                     self.controller.flower_controller.ai_tr_plat.raise_termination_fail()
-                    self.controller.flower_controller.run_cycle()
+                    # self.controller.flower_controller.run_cycle()
                     logger.warning("Terminate command exited with code %s", exit_code)
             except OSError as exc:
                 # Trigger the controller
                 self.controller.flower_controller.ai_tr_plat.raise_termination_fail()
-                self.controller.flower_controller.run_cycle()
+                # self.controller.flower_controller.run_cycle()
                 logger.error("Failed to terminate training process: %s", exc)
 
         # Raise flower controller terminate training event
@@ -227,9 +249,9 @@ class ControllerAPI:
                     logger.error("Could not start termination thread: %s", exc)
                     # Trigger the controller
                     self.controller.flower_controller.ai_tr_plat.raise_termination_fail()
-                    self.controller.flower_controller.run_cycle()
+                    # self.controller.flower_controller.run_cycle()
                 except Exception as e:
-                    raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server-Failed to raise terminate training event: {e}")
+                    raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server. Failed to raise terminate training event: {e}")
                 
         # Raise flower controller create error log event
         @self.router.post('/fl_controller/create_error_log', tags=['Flower Controller'])
@@ -245,7 +267,7 @@ class ControllerAPI:
 
                     # Trigger the controller
                     self.controller.flower_controller.ai_tr_plat.raise_create_error_log_complete()
-                    self.controller.flower_controller.run_cycle()
+                    # self.controller.flower_controller.run_cycle()
                     self.logger.info("Flower Controller raises create error log complete event")
                     return {
                         "status": "success",
@@ -253,8 +275,8 @@ class ControllerAPI:
                     }
                 except Exception as e:
                     self.controller.flower_controller.AiTrPlat.raise_create_error_log_complete()
-                    self.controller.flower_controller.run_cycle()
-                    raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server-Failed to raise create error log event: {e}")
+                    # self.controller.flower_controller.run_cycle()
+                    raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server. Failed to raise create error log event: {e}")
                 
 
         # Flower controller send error log to AppPlat
@@ -276,6 +298,6 @@ class ControllerAPI:
                         "message": "Flower Controller send error log complete event raised"
                     }
                 except Exception as e:
-                    raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server-Failed to raise send error log event: {e}")
+                    raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server. Failed to raise send error log event: {e}")
                 
         

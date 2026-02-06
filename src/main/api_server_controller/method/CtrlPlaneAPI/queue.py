@@ -41,7 +41,7 @@ class TaskQueueAPI:
             try:
                 # Trigger the controller 
                 self.task_queue.fl_training_queue_push(self.controller.task_name, "0")
-                self.controller.task_queue_controller.run_cycle()
+                # self.controller.task_queue_controller.run_cycle()
                 #===== need to report to AppPlat here =====#
                 # push success
                 #
@@ -49,7 +49,7 @@ class TaskQueueAPI:
                 #
                 #=========================================#
             except Exception as e:
-                self.controller.task_queue_controller.run_cycle()
+                # self.controller.task_queue_controller.run_cycle()
                 raise HTTPException(status_code=500, detail=f"[Error Code 100: CONNECTION_ERROR]: Failed to push task: {e}")
             
         # Called by AiTrPlat to delete task from server waiting queue
@@ -78,9 +78,9 @@ class TaskQueueAPI:
                 self.task_queue.fl_training_queue_task_finish()
                 self.controller.task_queue_controller.ai_tr_plat.raise_task_complete()
                 # The controller need to run cycle 3 times
-                self.controller.task_queue_controller.run_cycle()
-                self.controller.task_queue_controller.run_cycle()
-                self.controller.task_queue_controller.run_cycle()
+                # self.controller.task_queue_controller.run_cycle()
+                # self.controller.task_queue_controller.run_cycle()
+                # self.controller.task_queue_controller.run_cycle()
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"[Error Code 100: CONNECTION_ERROR]: Failed to complete task: {e}")
             
@@ -88,22 +88,23 @@ class TaskQueueAPI:
         @self.router.post('/fl_training_task_queue/report_push_fail', tags=['Control Task Queue'])
         async def fl_training_task_report_push_fail():
             try:
+                pass
                 #===== need to report to AppPlat here =====#
                 # push fail
                 #
                 #
                 #
                 #=========================================#
-                self.controller.task_queue_controller.run_cycle()
+                # self.controller.task_queue_controller.run_cycle()
             except Exception as e:
-                self.controller.task_queue_controller.run_cycle()
+                # self.controller.task_queue_controller.run_cycle()
                 raise HTTPException(status_code=500, detail=f"[Error Code 100: CONNECTION_ERROR]: Failed to run task queue controller cycle: {e}")
             
         # Called by AiTrPlat to get delete task is running 
         @self.router.get('/fl_training_task_queue/is_delete_running', tags=['Control Task Queue'])
         async def fl_training_task_is_delete_running():
             try:
-                delete_task_name = self.task_queue.fl_current_training_task == self.controller.delete_name["project_id"] + "_" + self.controller.delete_name["app_name"] + "_" + self.controller.delete_name["model_version"] + "_" + self.controller.delete_name["mode"]
+                delete_task_name = self.controller.delete_name
                 if self.task_queue.fl_current_training_task == delete_task_name:
                     return {"is_delete_running": True}
                 else:

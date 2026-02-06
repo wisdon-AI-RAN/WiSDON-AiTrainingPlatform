@@ -33,7 +33,21 @@ app = FastAPI(
     version="1.0.0"
 )
 
-
+def is_folder_empty_scandir(folder_path):
+    """Checks if a directory is empty using os.scandir()."""
+    try:
+        with os.scandir(folder_path) as it:
+            # If any entry is found, the directory is not empty.
+            return not any(it)
+    except FileNotFoundError:
+        # Handle the case where the folder does not exist
+        print(f"Error: The folder '{folder_path}' was not found.")
+        return False
+    except NotADirectoryError:
+        # Handle the case where the path points to a file
+        print(f"Error: The path '{folder_path}' is not a directory.")
+        return False
+    
 def get_model_path(project_id: str, app_name: str, model_name: str, version: str, component_name: str) -> tuple:
     """
     Get the file paths for a model
@@ -109,7 +123,7 @@ async def health_check():
 @app.post("/models/load")
 async def load_model(
     model_structure: UploadFile = File(..., description="Model structure file (.py, only support pytorch for now)"),
-    weights_file: UploadFile = File(..., description="Model weights file (.pt, only support pytorch for now)"),
+    weights_file: UploadFile = File(None, description="Model weights file (.pt, only support pytorch for now)"),
     project_id: str = Query(..., description="Project ID"),
     app_name: str = Query(..., description="Application name"),
     model_name: str = Query(..., description="Model name"),
@@ -144,12 +158,14 @@ async def load_model(
         with open(model_structure_path, "wb") as f:
             f.write(content)
 
-        content = await weights_file.read()
-        weights_file_path = os.path.join(model_dir, "model.pt")
-        with open(weights_file_path, "wb") as f:
-            f.write(content)
+        if weights_file is not None:
+            content = await weights_file.read()
+            weights_file_path = os.path.join(model_dir, "model.pt")
+            with open(weights_file_path, "wb") as f:
+                f.write(content)
         
         # Save metadata
+        size = os.path.getsize(model_dir) if weights_file is not None else os.path.getsize(model_structure_path)
         metadata = {
             "project_id": project_id,
             "app_name": app_name,
@@ -159,7 +175,7 @@ async def load_model(
             "original_filename": model_structure.filename,
             "content_type": model_structure.content_type,
             "upload_timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            "size": os.path.getsize(weights_file_path)
+            "size": size
         }
         
         if description:
@@ -179,7 +195,7 @@ async def load_model(
                 "model_name": model_name,
                 "version": version,
                 "component_name": component_name,
-                "size": os.path.getsize(weights_file_path),
+                "size": size,
                 "path": model_dir
             }
         )
@@ -542,6 +558,20 @@ async def delete_component(project_id: str, app_name: str, model_name: str, vers
         # Delete entire component directory
         if os.path.exists(model_dir):
             shutil.rmtree(model_dir)
+
+        # Check paraent directories and remove if empty
+        version_dir = os.path.join(MODEL_STORAGE_PATH, project_id, app_name, model_name, version)
+        if is_folder_empty_scandir(version_dir):
+            shutil.rmtree(version_dir)
+            model_name_dir = os.path.join(MODEL_STORAGE_PATH, project_id, app_name, model_name)
+            if is_folder_empty_scandir(model_name_dir):
+                shutil.rmtree(model_name_dir)
+                # app_dir = os.path.join(MODEL_STORAGE_PATH, project_id, app_name)
+                # if is_folder_empty_scandir(app_dir):
+                #     shutil.rmtree(app_dir)
+                #     project_dir = os.path.join(MODEL_STORAGE_PATH, project_id)
+                #     if is_folder_empty_scandir(project_dir):
+                #         shutil.rmtree(project_dir)
         
         return {
             "message": "Component deleted successfully",
@@ -577,6 +607,11 @@ async def delete_model_version(project_id: str, app_name: str, model_name: str, 
         # Delete entire model directory
         if os.path.exists(model_dir):
             shutil.rmtree(model_dir)
+
+        # Check paraent directories and remove if empty
+        model_name_dir = os.path.join(MODEL_STORAGE_PATH, project_id, app_name, model_name)
+        if is_folder_empty_scandir(model_name_dir):
+            shutil.rmtree(model_name_dir)
         
         return {
             "message": "Model deleted successfully",

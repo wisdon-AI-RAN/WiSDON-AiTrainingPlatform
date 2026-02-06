@@ -21,23 +21,27 @@ app = ClientApp()
 def train(msg: Message, context: Context):
     """Train the model on local data."""
     # Connect to MongoDB and load training parameters
-    mongodb_url = os.environ.get("MONGODB_URL", "mongodb://mongodb:27017")
+    mongodb_url = os.environ.get("AITRCOMMONDB_URI")
+    if mongodb_url is None:
+        print("[ERROR CODE 300: FLOWER_INTERNAL_ERROR] AITRCOMMONDB_URI environment variable not set. Cannot connect to MongoDB.")
+        return
     client = MongoClient(mongodb_url)
-    database = client["Training_Configuration"]
-    collection = database["training_conf"]
+    database = client["TrainingConfig"]
+    collection = database["current_task"]
 
     # Query data from MongoDB
-    item_set = collection.find({
-        "project_id": "running"
+    item = collection.find_one({
+        "status": "running"
     })
 
-    for item in item_set:
-        project_id = item["project_id"]
-        app_name = item["app_name"]
-        model_version = item["model_version"]
-        mode = item["mode"]
-        epochs = item["epochs"]
-        learning_rate = item["learning_rate"] 
+    project_id = item["project_id"]
+    app_name = item["app_name"]
+    model_name = item["model_name"]
+    model_version = item["model_version"]
+    mode = item["mode"]
+    dataset_name = item["dataset_name"]
+    epochs = item["epochs"]
+    learning_rate = item["learning_rate"] 
 
     # Parameters
     action_dim = 256
@@ -61,9 +65,9 @@ def train(msg: Message, context: Context):
     actor_sd, critic_sd = unpack_model_arrays(msg.content["arrays"])
     actor.load_state_dict(actor_sd)
     critic.load_state_dict(critic_sd)
-
     # actor.load_state_dict(msg.content["actor_arrays"].to_torch_state_dict())
     # critic.load_state_dict(msg.content["critic_arrays"].to_torch_state_dict())
+
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     actor.to(device)
     critic.to(device)
@@ -95,9 +99,8 @@ def train(msg: Message, context: Context):
         actor_loss, critic_loss, reward_history, num_examples = pretrain_fn(
             actor,
             critic,
-            app_name,
-            project_id,
-            model_version = model_version,
+            train_dataset,
+            valid_dataset,
             batch_size=32,
             epochs=epochs,
             lr=learning_rate,
@@ -123,23 +126,27 @@ def train(msg: Message, context: Context):
 @app.evaluate()
 def evaluate(msg: Message, context: Context):
     # Connect to MongoDB and load training parameters
-    mongodb_url = os.environ.get("MONGODB_URL", "mongodb://mongodb:27017")
+    mongodb_url = os.environ.get("AITRCOMMONDB_URI")
+    if mongodb_url is None:
+        print("[ERROR CODE 300: FLOWER_INTERNAL_ERROR] AITRCOMMONDB_URI environment variable not set. Cannot connect to MongoDB.")
+        return
     client = MongoClient(mongodb_url)
-    database = client["Training_Configuration"]
-    collection = database["training_conf"]
+    database = client["TrainingConfig"]
+    collection = database["current_task"]
 
     # Query data from MongoDB
-    item_set = collection.find({
-        "project_id": "running"
+    item = collection.find_one({
+        "status": "running"
     })
 
-    for item in item_set:
-        project_id = item["project_id"]
-        app_name = item["app_name"]
-        model_version = item["model_version"]
-        mode = item["mode"]
-        epochs = item["epochs"]
-        learning_rate = item["learning_rate"] 
+    project_id = item["project_id"]
+    app_name = item["app_name"]
+    model_name = item["model_name"]
+    model_version = item["model_version"]
+    mode = item["mode"]
+    dataset_name = item["dataset_name"]
+    epochs = item["epochs"]
+    learning_rate = item["learning_rate"] 
 
     """Evaluate the model on local data."""
     # Parameters

@@ -16,6 +16,8 @@ services:
     environment:
       - MONGODB_URL=mongodb://mongodb:27017
       - API_SERVER_URL=http://flower-controller:9005
+      - MODEL_REPOSITORY_URL=http://ai-model-repository:8000
+      - AITRCOMMONDB_URI=mongodb://admin:4iMzQt9wc%2ByTUy3AqMDTOj3QuAMVwvAC@localhost:27018/?directConnection=true&authSource=admin
     command:
       - --insecure
       - --isolation
@@ -34,6 +36,8 @@ services:
     environment:
       - MONGODB_URL=mongodb://mongodb:27017
       - API_SERVER_URL=http://flower-controller:9005
+      - MODEL_REPOSITORY_URL=http://ai-model-repository:8000
+      - AITRCOMMONDB_URI=mongodb://admin:4iMzQt9wc%2ByTUy3AqMDTOj3QuAMVwvAC@localhost:27018/?directConnection=true&authSource=admin
     command:
       - --insecure
       - --superlink
@@ -66,11 +70,13 @@ services:
       - PYTHONUNBUFFERED=1
       - MONGODB_URL=mongodb://mongodb:27017
       - API_SERVER_URL=http://localhost:9005
+      - MODEL_REPOSITORY_URL=http://ai-model-repository:8000
+      - AITRCOMMONDB_URI=mongodb://admin:4iMzQt9wc%2ByTUy3AqMDTOj3QuAMVwvAC@localhost:27018/?directConnection=true&authSource=admin
     networks:
       - aitrplat
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9005/state"]
+      test: ["CMD", "curl", "-f", "http://localhost:9005/Welcome"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -84,6 +90,8 @@ services:
     environment:
       - MONGODB_URL=mongodb://mongodb:27017
       - API_SERVER_URL=http://flower-controller:9005
+      - MODEL_REPOSITORY_URL=http://ai-model-repository:8000
+      - AITRCOMMONDB_URI=mongodb://admin:4iMzQt9wc%2ByTUy3AqMDTOj3QuAMVwvAC@localhost:27018/?directConnection=true&authSource=admin
     command:
       - --insecure
       - --plugin-type
@@ -109,6 +117,8 @@ services:
     environment:
       - MONGODB_URL=mongodb://mongodb:27017
       - API_SERVER_URL=http://flower-controller:9005
+      - MODEL_REPOSITORY_URL=http://ai-model-repository:8000
+      - AITRCOMMONDB_URI=mongodb://admin:4iMzQt9wc%2ByTUy3AqMDTOj3QuAMVwvAC@localhost:27018/?directConnection=true&authSource=admin
     command:
       - --insecure
       - --plugin-type
