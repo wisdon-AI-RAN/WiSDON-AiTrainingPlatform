@@ -137,17 +137,22 @@ class DataLoader:
                 secure=False 
             )
 
+            local_file_path = f"./training_data/{self.dataset_name}"
             client.fget_object(
                 bucket_name = bucket_name,
                 object_name = object_name,
-                file_path = f"./training_data/{self.dataset_name}"
+                file_path = local_file_path
             )
+
+            return local_file_path
 
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"[ERROR CODE 300: FLOWER_INTERNAL_ERROR] Get training data failed: {str(e)}"
             )
+        
+        
         
     def data_to_numpy(self, item_set, num_items):
         

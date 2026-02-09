@@ -202,6 +202,7 @@ cython_debug/
 
 # Project-specific
 src/model_repository/models/
+src/MinIO/data/
 .cursorindexingignore
 
 # Marimo

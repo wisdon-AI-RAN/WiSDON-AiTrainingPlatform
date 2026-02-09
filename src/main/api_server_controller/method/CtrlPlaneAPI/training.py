@@ -31,6 +31,7 @@ class TrainingConfig(BaseModel):
     dataset_name: str
     epochs: int
     learning_rate: float
+    batch_size: int
     timestamp: str
 
 class TrainingAPI:
@@ -83,6 +84,7 @@ class TrainingAPI:
                     "status": "waiting",
                     "epochs": config.epochs,
                     "learning_rate": config.learning_rate,
+                    "batch_size": config.batch_size,
                     "timestamp": config.timestamp
                 }
                 collection.insert_one(insert_data)

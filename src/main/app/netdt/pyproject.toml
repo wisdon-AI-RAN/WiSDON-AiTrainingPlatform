@@ -8,7 +8,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "network-energy-saving"
+name = "netdt"
 version = "1.0.0"
 description = ""
 license = "Apache-2.0"
@@ -35,8 +35,8 @@ publisher = "WiSDON"
 
 # Point to your ServerApp and ClientApp objects
 [tool.flwr.app.components]
-serverapp = "network_energy_saving.server_app:app"
-clientapp = "network_energy_saving.client_app:app"
+serverapp = "netdt.server_app:app"
+clientapp = "netdt.client_app:app"
 
 # Custom config values accessible via `context.run_config`
 [tool.flwr.app.config]
@@ -48,7 +48,7 @@ spilt = 0.1
 
 # Default federation to use when running the app
 [tool.flwr.federations]
-default = "network_energy_saving"
+default = "netdt"
 
 # Local simulation federation with 10 virtual SuperNodes
 [tool.flwr.federations.local-simulation]
@@ -61,6 +61,6 @@ address = "127.0.0.1:9093"
 insecure = true  # Remove this line to enable TLS
 # root-certificates = "<PATH/TO/ca.crt>"  # For TLS setup
 
-[tool.flwr.federations.network_energy_saving]
+[tool.flwr.federations.netdt]
 address = "superlink:9093"
 insecure = true

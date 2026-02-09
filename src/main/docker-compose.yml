@@ -17,7 +17,10 @@ services:
       - MONGODB_URL=mongodb://mongodb:27017
       - API_SERVER_URL=http://flower-controller:9005
       - MODEL_REPOSITORY_URL=http://ai-model-repository:8000
-      - AITRCOMMONDB_URI=mongodb://admin:4iMzQt9wc%2ByTUy3AqMDTOj3QuAMVwvAC@localhost:27018/?directConnection=true&authSource=admin
+      - AITRCOMMONDB_URI=mongodb://admin:4iMzQt9wc%2ByTUy3AqMDTOj3QuAMVwvAC@host.docker.internal:37018/?directConnection=true&authSource=admin
+      - MINIO_URI=140.113.144.121:19000
+      - MINIO_ACCESS_KEY=WiSDON
+      - MINIO_SECRET_KEY=mbwcl711
     command:
       - --insecure
       - --isolation
@@ -28,6 +31,8 @@ services:
       - "9093:9093"
     networks:
       - aitrplat
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
   supernode-1:
@@ -37,7 +42,10 @@ services:
       - MONGODB_URL=mongodb://mongodb:27017
       - API_SERVER_URL=http://flower-controller:9005
       - MODEL_REPOSITORY_URL=http://ai-model-repository:8000
-      - AITRCOMMONDB_URI=mongodb://admin:4iMzQt9wc%2ByTUy3AqMDTOj3QuAMVwvAC@localhost:27018/?directConnection=true&authSource=admin
+      - AITRCOMMONDB_URI=mongodb://admin:4iMzQt9wc%2ByTUy3AqMDTOj3QuAMVwvAC@host.docker.internal:37018/?directConnection=true&authSource=admin
+      - MINIO_URI=140.113.144.121:19000
+      - MINIO_ACCESS_KEY=WiSDON
+      - MINIO_SECRET_KEY=mbwcl711
     command:
       - --insecure
       - --superlink
@@ -52,6 +60,8 @@ services:
       - "9094:9094"
     networks:
       - aitrplat
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - superlink
     restart: unless-stopped
@@ -71,12 +81,17 @@ services:
       - MONGODB_URL=mongodb://mongodb:27017
       - API_SERVER_URL=http://localhost:9005
       - MODEL_REPOSITORY_URL=http://ai-model-repository:8000
-      - AITRCOMMONDB_URI=mongodb://admin:4iMzQt9wc%2ByTUy3AqMDTOj3QuAMVwvAC@localhost:27018/?directConnection=true&authSource=admin
+      - AITRCOMMONDB_URI=mongodb://admin:4iMzQt9wc%2ByTUy3AqMDTOj3QuAMVwvAC@host.docker.internal:37018/?directConnection=true&authSource=admin
+      - MINIO_URI=140.113.144.121:19000
+      - MINIO_ACCESS_KEY=WiSDON
+      - MINIO_SECRET_KEY=mbwcl711
     networks:
       - aitrplat
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9005/Welcome"]
+      test: ["CMD", "curl", "-f", "http://localhost:9005/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -91,7 +106,10 @@ services:
       - MONGODB_URL=mongodb://mongodb:27017
       - API_SERVER_URL=http://flower-controller:9005
       - MODEL_REPOSITORY_URL=http://ai-model-repository:8000
-      - AITRCOMMONDB_URI=mongodb://admin:4iMzQt9wc%2ByTUy3AqMDTOj3QuAMVwvAC@localhost:27018/?directConnection=true&authSource=admin
+      - AITRCOMMONDB_URI=mongodb://admin:4iMzQt9wc%2ByTUy3AqMDTOj3QuAMVwvAC@host.docker.internal:37018/?directConnection=true&authSource=admin
+      - MINIO_URI=140.113.144.121:19000
+      - MINIO_ACCESS_KEY=WiSDON
+      - MINIO_SECRET_KEY=mbwcl711
     command:
       - --insecure
       - --plugin-type
@@ -100,6 +118,8 @@ services:
       - superlink:9091
     networks:
       - aitrplat
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - superlink
     restart: unless-stopped
@@ -118,7 +138,10 @@ services:
       - MONGODB_URL=mongodb://mongodb:27017
       - API_SERVER_URL=http://flower-controller:9005
       - MODEL_REPOSITORY_URL=http://ai-model-repository:8000
-      - AITRCOMMONDB_URI=mongodb://admin:4iMzQt9wc%2ByTUy3AqMDTOj3QuAMVwvAC@localhost:27018/?directConnection=true&authSource=admin
+      - AITRCOMMONDB_URI=mongodb://admin:4iMzQt9wc%2ByTUy3AqMDTOj3QuAMVwvAC@host.docker.internal:37018/?directConnection=true&authSource=admin
+      - MINIO_URI=140.113.144.121:19000
+      - MINIO_ACCESS_KEY=WiSDON
+      - MINIO_SECRET_KEY=mbwcl711
     command:
       - --insecure
       - --plugin-type
@@ -127,6 +150,8 @@ services:
       - supernode-1:9094
     networks:
       - aitrplat
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - supernode-1
       - superexec-serverapp

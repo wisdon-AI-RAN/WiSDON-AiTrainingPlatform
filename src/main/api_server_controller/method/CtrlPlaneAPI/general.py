@@ -11,6 +11,7 @@ from typing import List, Optional, Dict
 from fastapi import FastAPI, APIRouter, Response, status, HTTPException
 from pydantic import BaseModel
 import threading
+import time
 
 class ModelInfo(BaseModel):
     project_id: str
@@ -35,6 +36,7 @@ class GeneralCtrlAPI:
                 return {
                     "message": "Welcome to WiSDON AI Training Platform !!",
                     "endpoints": {
+                        "GET /health": "Health check endpoint for Docker",
                         "GET /fl_task_queue/show_waiting": "Show total tasks waiting in the queue",
                         "GET /fl_task_queue/show_current": "Show current training task",
                         "GET /fl_controller/show_status": "Show current flower controller status",
@@ -42,6 +44,27 @@ class GeneralCtrlAPI:
                 }
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server. Connection failed: {e}")
+        
+        # Health check endpoint for Docker
+        @self.router.get('/health', tags=['Health'])
+        async def health_check(response: Response):
+            """
+            Health check endpoint for Docker container health monitoring.
+            Returns 200 OK if the service is running.
+            """
+            try:
+                response.status_code = status.HTTP_200_OK
+                return {
+                    "status": "healthy",
+                    "service": "WiSDON AI Training Platform API",
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+                }
+            except Exception as e:
+                response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+                return {
+                    "status": "unhealthy",
+                    "error": str(e)
+                }
         
         # Show total tasks which waiting in the queue
         @self.router.get('/fl_task_queue/show_waiting', tags=['Show FL Retrain Event'])

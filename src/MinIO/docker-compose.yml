@@ -1,0 +1,14 @@
+services:
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: minio
+    ports:
+      - "19000:19000"      # API 埠號
+      - "19001:19001"      # 管理介面 (Console) 埠號
+    environment:
+      MINIO_ACCESS_KEY: WiSDON
+      MINIO_SECRET_KEY: mbwcl711
+    volumes:
+      - ./data:/data                      # 將資料持久化儲存在本地 data 資料夾
+    command: server /data --address ":19000" --console-address ":19001"
+    restart: unless-stopped
