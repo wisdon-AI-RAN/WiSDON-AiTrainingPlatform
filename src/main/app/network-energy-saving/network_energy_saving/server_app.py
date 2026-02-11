@@ -1,7 +1,6 @@
 """network-energy-saving: A Flower / PyTorch app."""
 
 import sys, os
-import inspect
 import torch
 import numpy as np
 import torch.nn as nn
@@ -14,6 +13,7 @@ from pymongo import MongoClient
 from network_energy_saving.model import Actor, DQN
 from network_energy_saving.array_utils import pack_model_arrays, unpack_model_arrays
 from network_energy_saving.model_loader import ModelRepositoryClient
+from network_energy_saving.export_onnx import export_onnx
 
 # Create ServerApp
 app = ServerApp()
@@ -22,7 +22,7 @@ app = ServerApp()
 def main(grid: Grid, context: Context) -> None:
     """Main entry point for the ServerApp."""
 
-    # Connect to MongoDB and load training parameters
+    # Connect to MongoDB and query the current running task
     mongodb_url = os.environ.get("AITRCOMMONDB_URI")
     if mongodb_url is None:
         print("[ERROR CODE 300: FLOWER_INTERNAL_ERROR] AITRCOMMONDB_URI environment variable not set. Cannot connect to MongoDB.")
@@ -30,25 +30,36 @@ def main(grid: Grid, context: Context) -> None:
     client = MongoClient(mongodb_url)
     database = client["TrainingConfig"]
     collection = database["current_task"]
-
-    # Query data from MongoDB
     item = collection.find_one({
         "status": "running"
     })
-
     project_id = item["project_id"]
     app_name = item["app_name"]
     model_name = item["model_name"]
     model_version = item["model_version"]
     mode = item["mode"]
     dataset_name = item["dataset_name"]
+
+    # Query training parameters
+    client = MongoClient(mongodb_url)
+    collection_name = f"{project_id}_{app_name}_{model_name}_{model_version}_{mode}_{dataset_name}"
+    database = client["TrainingConfig"]
+    collection = database[collection_name]
+    item = collection.find_one({
+        "project_id": project_id,
+        "app_name": app_name,
+        "model_name": model_name,
+        "model_version": model_version,
+        "mode": mode,
+        "dataset_name": dataset_name,
+    })
     epochs = item["epochs"]
     learning_rate = item["learning_rate"] 
+    batch_size = item["batch_size"] 
 
     # Read run config
     fraction_train: float = context.run_config["fraction-train"]
-    num_rounds: int = epochs
-    lr: float = learning_rate
+    num_rounds: int = context.run_config["num-server-rounds"]
 
     # Load global model
     # Parameters
@@ -85,7 +96,7 @@ def main(grid: Grid, context: Context) -> None:
     result = strategy.start(
         grid=grid,
         initial_arrays=initial_arrays,
-        train_config=ConfigRecord({"lr": lr}),
+        train_config=ConfigRecord({"lr": learning_rate, "epochs": epochs, "batch_size": batch_size}),
         num_rounds=num_rounds,
     )
 
@@ -122,7 +133,19 @@ def main(grid: Grid, context: Context) -> None:
         return
     client = ModelRepositoryClient(base_url=model_repository_url)
 
-    upload_result = client.upload_model(
+    upload_result = client.upload_onnx_model(
+        file_path=f"./models/{project_id}/{app_name}/{model_name}/{new_model_version}/final_global_actor.pt",
+        project_id=project_id,
+        app_name=app_name,
+        model_name=model_name,
+        version=new_model_version,
+        component_name="global_actor",
+        description=f"Mode:{mode}, Final global_actor exported to .pt",     
+        framework="pytorch"
+    )
+    print(f"Upload .pt model result: {upload_result}")
+
+    upload_result = client.upload_onnx_model(
         file_path=f"./models/{project_id}/{app_name}/{model_name}/{new_model_version}/final_global_actor_logits.onnx",
         project_id=project_id,
         app_name=app_name,
@@ -132,56 +155,5 @@ def main(grid: Grid, context: Context) -> None:
         description=f"Mode:{mode}, Final global actor logits model exported to ONNX",     
         framework="pytorch"
     )
-    print(f"Upload actor result: {upload_result}")
+    print(f"Upload ONNX model result: {upload_result}")
 
-    # result = client.upload_model(
-    #     file_path=f"./models/{project_id}/{app_name}/{model_name}/{model_version}/final_global_critic_logits.onnx",
-    #     project_id=project_id,
-    #     app_name=app_name,
-    #     version=model_version,
-    #     model_name="global_critic_logits",
-    #     description="Final global critic logits model exported to ONNX",     
-    #     framework="pytorch"
-    # )
-    # print(f"Upload critic result: {result}")
-
-def export_onnx(model: Actor, onnx_path: str, opset: int = 18, n_feats: int = 9, total_bs: int = 8) -> None:
-    """
-    Export deterministic actor logits model to ONNX.
-    Input:  state  [B, N_FEATS, 10, TOTAL_BS]
-    Output: logits [B, ACTION_DIM]
-    """
-    model.eval()
-
-    class ActorLogitsWrapper(nn.Module):
-        def __init__(self, actor: Actor):
-            super().__init__()
-            self.actor = actor
-        def forward(self, state):
-            return self.actor.forward_logits(state)
-
-    orig_device = next(model.parameters()).device
-    cpu_model = model.to("cpu").eval()
-    wrapper = ActorLogitsWrapper(cpu_model).eval()
-
-    dummy = torch.zeros(1, n_feats, 10, total_bs, dtype=torch.float32, device="cpu")
-
-    export_kwargs = {
-        "input_names": ["state"],
-        "output_names": ["logits"],
-        "dynamic_axes": {"state": {0: "batch"}, "logits": {0: "batch"}},
-        "opset_version": opset,
-    }
-    if "use_dynamo" in inspect.signature(torch.onnx.export).parameters:
-        export_kwargs["use_dynamo"] = False
-
-    try:
-        torch.onnx.export(
-            wrapper,
-            dummy,
-            onnx_path,
-            **export_kwargs,
-        )
-    finally:
-        model.to(orig_device)
-    print(f"[EXPORT] ONNX saved → {onnx_path}")

@@ -9,7 +9,7 @@ from flwr.clientapp import ClientApp
 from pymongo import MongoClient
 
 from network_energy_saving.model import Actor, DQN
-from network_energy_saving.agent import train_fn, test_fn, pretrain_fn
+from network_energy_saving.agent import train_fn, test_fn
 from network_energy_saving.data_loader import DataLoader
 from network_energy_saving.array_utils import pack_model_arrays, unpack_model_arrays
 
@@ -20,7 +20,7 @@ app = ClientApp()
 @app.train()
 def train(msg: Message, context: Context):
     """Train the model on local data."""
-    # Connect to MongoDB and load training parameters
+    # Connect to MongoDB and query the current running task
     mongodb_url = os.environ.get("AITRCOMMONDB_URI")
     if mongodb_url is None:
         print("[ERROR CODE 300: FLOWER_INTERNAL_ERROR] AITRCOMMONDB_URI environment variable not set. Cannot connect to MongoDB.")
@@ -28,20 +28,34 @@ def train(msg: Message, context: Context):
     client = MongoClient(mongodb_url)
     database = client["TrainingConfig"]
     collection = database["current_task"]
-
-    # Query data from MongoDB
     item = collection.find_one({
         "status": "running"
     })
-
     project_id = item["project_id"]
     app_name = item["app_name"]
     model_name = item["model_name"]
     model_version = item["model_version"]
     mode = item["mode"]
     dataset_name = item["dataset_name"]
-    epochs = item["epochs"]
-    learning_rate = item["learning_rate"] 
+
+    # Query training parameters
+    client = MongoClient(mongodb_url)
+    collection_name = f"{project_id}_{app_name}_{model_name}_{model_version}_{mode}_{dataset_name}"
+    database = client["TrainingConfig"]
+    collection = database[collection_name]
+    item = collection.find_one({
+        "project_id": project_id,
+        "app_name": app_name,
+        "model_name": model_name,
+        "model_version": model_version,
+        "mode": mode,
+        "dataset_name": dataset_name,
+    })
+
+    # Get training parameters from server
+    epochs = msg.content["config"]["epochs"]
+    learning_rate = msg.content["config"]["lr"]
+    batch_size = msg.content["config"]["batch_size"]
 
     # Parameters
     action_dim = 256
@@ -67,10 +81,7 @@ def train(msg: Message, context: Context):
     critic.load_state_dict(critic_sd)
     # actor.load_state_dict(msg.content["actor_arrays"].to_torch_state_dict())
     # critic.load_state_dict(msg.content["critic_arrays"].to_torch_state_dict())
-
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    actor.to(device)
-    critic.to(device)
 
     # Load dataset from MongoDB
     # partition_id = context.node_config["partition-id"]
@@ -92,7 +103,7 @@ def train(msg: Message, context: Context):
             critic,
             train_dataset,
             valid_dataset,
-            batch_size=32,
+            batch_size=batch_size,
             epochs=epochs,
             lr=learning_rate,
             gamma=0,
@@ -101,12 +112,12 @@ def train(msg: Message, context: Context):
         )
     elif mode == "pretrain":
         # Call the pretraining function
-        actor_loss, critic_loss, reward_history = pretrain_fn(
+        actor_loss, critic_loss, reward_history = train_fn(
             actor,
             critic,
             train_dataset,
             valid_dataset,
-            batch_size=32,
+            batch_size=batch_size,
             epochs=epochs,
             lr=learning_rate,
             gamma=0,
@@ -130,7 +141,7 @@ def train(msg: Message, context: Context):
 
 @app.evaluate()
 def evaluate(msg: Message, context: Context):
-    # Connect to MongoDB and load training parameters
+    # Connect to MongoDB and query the current running task
     mongodb_url = os.environ.get("AITRCOMMONDB_URI")
     if mongodb_url is None:
         print("[ERROR CODE 300: FLOWER_INTERNAL_ERROR] AITRCOMMONDB_URI environment variable not set. Cannot connect to MongoDB.")
@@ -138,22 +149,35 @@ def evaluate(msg: Message, context: Context):
     client = MongoClient(mongodb_url)
     database = client["TrainingConfig"]
     collection = database["current_task"]
-
-    # Query data from MongoDB
     item = collection.find_one({
         "status": "running"
     })
-
     project_id = item["project_id"]
     app_name = item["app_name"]
     model_name = item["model_name"]
     model_version = item["model_version"]
     mode = item["mode"]
     dataset_name = item["dataset_name"]
-    epochs = item["epochs"]
-    learning_rate = item["learning_rate"] 
 
-    """Evaluate the model on local data."""
+    # Query training parameters
+    client = MongoClient(mongodb_url)
+    collection_name = f"{project_id}_{app_name}_{model_name}_{model_version}_{mode}_{dataset_name}"
+    database = client["TrainingConfig"]
+    collection = database[collection_name]
+    item = collection.find_one({
+        "project_id": project_id,
+        "app_name": app_name,
+        "model_name": model_name,
+        "model_version": model_version,
+        "mode": mode,
+        "dataset_name": dataset_name,
+    })
+
+    # Get training parameters from server
+    # epochs = msg.content["config"]["epochs"]
+    # learning_rate = msg.content["config"]["lr"]
+    # batch_size = msg.content["config"]["batch_size"]
+
     # Parameters
     action_dim = 256
     # === RU role configuration (centralized) ===
@@ -177,20 +201,21 @@ def evaluate(msg: Message, context: Context):
     actor.load_state_dict(actor_sd)
     critic.load_state_dict(critic_sd)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    actor.to(device)
-    critic.to(device)
 
+    """
     # Load the data
     # partition_id = context.node_config["partition-id"]
     # num_partitions = context.node_config["num-partitions"]
     data_loader = DataLoader(app_name = app_name,
-                project_id = project_id,
-                model_version = model_version)
-    _, test_dataset = data_loader.create_dataset(episode=0,split=0)
+                    project_id = project_id,
+                    model_name = model_name,
+                    model_version = model_version,
+                    mode = mode,
+                    dataset_name = dataset_name)
+    
+    _, test_dataset = data_loader.create_dataset(episode=0,split=0,random_seed=42)
 
     if mode == "retrain":
-        
-
         # Call the evaluation function
         actor_loss, critic_loss, eval_value = test_fn(
             actor,
@@ -220,12 +245,13 @@ def evaluate(msg: Message, context: Context):
         actor_loss = 1.0
         critic_loss = 1.0   
         eval_value = 1.0
+    """
 
     # Construct and return reply Message
     metrics = {
-        "eval_actor_loss": actor_loss,
-        "eval_critic_loss": critic_loss,
-        "eval_value": eval_value,
+        "eval_actor_loss": [],
+        "eval_critic_loss": [],
+        "eval_value": [],
         "num-examples": 1,
     }
     metric_record = MetricRecord(metrics)

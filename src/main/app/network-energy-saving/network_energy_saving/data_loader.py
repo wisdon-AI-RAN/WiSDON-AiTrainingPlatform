@@ -95,7 +95,7 @@ class DataLoader:
         train_dataset, test_dataset = torch.utils.data.random_split(
             dataset, 
             [num_training_data, num_test_data],
-            generator=torch.Generator(device='cuda').manual_seed(random_seed) if torch.cuda.is_available() else torch.Generator().manual_seed(random_seed)
+            generator=torch.Generator().manual_seed(random_seed)
         )
 
         # print("Preprocess data successfully.")

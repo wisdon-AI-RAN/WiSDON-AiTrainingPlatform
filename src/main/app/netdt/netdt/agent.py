@@ -67,7 +67,7 @@ def train_fn(model, local_file_path, batch_size=32, epochs=10, lr=1e-4, device='
 
         training_loss_history_stage1.append(loss_sum / PRE_STEPS_PER_EPOCH)
         update_training_results_SL(total_epochs_stage1=PRE_EPOCHS,
-                               epoch_stage1=epoch+1,
+                               epoch_stage1=epoch,
                                training_loss_stage1=training_loss_history_stage1,
                                total_epochs_stage2=FT_EPOCHS,
                                epoch_stage2=0,
@@ -139,7 +139,7 @@ def train_fn(model, local_file_path, batch_size=32, epochs=10, lr=1e-4, device='
                                epoch_stage1=PRE_EPOCHS,
                                training_loss_stage1=training_loss_history_stage1,
                                total_epochs_stage2=FT_EPOCHS,
-                               epoch_stage2=epoch+1,
+                               epoch_stage2=epoch,
                                training_loss_stage2=training_loss_history_stage2)
         if epoch % 30 == 0:
             print(

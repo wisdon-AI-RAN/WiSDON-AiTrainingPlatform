@@ -123,12 +123,13 @@ class ControllerAPI:
                     raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server. Failed to raise task start event: {e}")
 
         def _run_flower_app(self, app_name):
-            if app_name == "NES":
-                command = f"flwr run app/network-energy-saving network_energy_saving --stream"
-            else:
-                command = f"flwr run app/{app_name} {app_name} --stream"
-            logger.info("Launching Flower app in background: %s", command)
             try:
+                if app_name == "NES":
+                    command = f"flwr run app/network-energy-saving network_energy_saving --stream"
+                else:
+                    command = f"flwr run app/{app_name} {app_name} --stream"
+                logger.info("Launching Flower app in background: %s", command)
+
                 exit_code = os.system(command)
                 if exit_code == 0:
                     logger.info("Flower app completed successfully.")
@@ -199,6 +200,8 @@ class ControllerAPI:
                     self.controller.flower_controller.ai_tr_plat.raise_internal_error()
                     # self.controller.flower_controller.run_cycle()
                 except Exception as e:
+                    # Trigger the controller
+                    self.controller.flower_controller.ai_tr_plat.raise_internal_error()
                     raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server. Failed to raise task start event: {e}")
                 
         # Raise flower controller stop training event
@@ -214,6 +217,8 @@ class ControllerAPI:
                         "message": "Flower Controller stop training event raised"
                     }
                 except Exception as e:
+                    # Trigger the controller
+                    self.controller.flower_controller.ai_tr_plat.raise_internal_error()
                     raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server. Failed to raise stop training event: {e}")
                 
         def _terminate_training(self):
@@ -251,6 +256,8 @@ class ControllerAPI:
                     self.controller.flower_controller.ai_tr_plat.raise_termination_fail()
                     # self.controller.flower_controller.run_cycle()
                 except Exception as e:
+                    # Trigger the controller
+                    self.controller.flower_controller.ai_tr_plat.raise_termination_fail()
                     raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server. Failed to raise terminate training event: {e}")
                 
         # Raise flower controller create error log event
@@ -274,7 +281,7 @@ class ControllerAPI:
                         "message": "Flower Controller create error log complete event raised"
                     }
                 except Exception as e:
-                    self.controller.flower_controller.AiTrPlat.raise_create_error_log_complete()
+                    self.controller.flower_controller.ai_tr_plat.raise_create_error_log_complete()
                     # self.controller.flower_controller.run_cycle()
                     raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server. Failed to raise create error log event: {e}")
                 
