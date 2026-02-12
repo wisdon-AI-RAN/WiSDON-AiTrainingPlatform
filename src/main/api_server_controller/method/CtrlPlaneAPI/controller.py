@@ -16,6 +16,8 @@ from fastapi import FastAPI, APIRouter, Response, status, HTTPException
 from pydantic import BaseModel
 import threading
 from pymongo import MongoClient
+import subprocess
+import re
 
 class ModelInfo(BaseModel):
     project_id: str
@@ -40,6 +42,8 @@ class ControllerAPI:
         self.controller = controller
         self.task_queue = task_queue
         self.logger = logger
+        self.thread = None
+        self.stop_thread = threading.Event()
         
         ''''''''' Flower Controller '''''''''
         # Show current flower controller status
@@ -128,11 +132,11 @@ class ControllerAPI:
                     command = f"flwr run app/network-energy-saving network_energy_saving --stream"
                 else:
                     command = f"flwr run app/{app_name} {app_name} --stream"
-                logger.info("Launching Flower app in background: %s", command)
+                self.logger.info("Launching Flower app in background: %s", command)
 
                 exit_code = os.system(command)
                 if exit_code == 0:
-                    logger.info("Flower app completed successfully.")
+                    self.logger.info("Flower app completed successfully.")
                     # Trigger the controller
                     self.controller.flower_controller.ai_tr_plat.raise_training_complete()
                     # self.controller.flower_controller.run_cycle()
@@ -140,12 +144,12 @@ class ControllerAPI:
                     # Trigger the controller
                     self.controller.flower_controller.ai_tr_plat.raise_internal_error()
                     # self.controller.flower_controller.run_cycle()
-                    logger.error("Flower app exited with code %s", exit_code)
+                    self.logger.error("Flower app exited with code %s", exit_code)
             except OSError as exc:
                 # Trigger the controller
                 self.controller.flower_controller.ai_tr_plat.raise_internal_error()
                 # self.controller.flower_controller.run_cycle()
-                logger.error("Failed to execute Flower app: %s", exc)
+                self.logger.error("Failed to execute Flower app: %s", exc)
 
         # Raise flower controller start flower app
         @self.router.post('/fl_controller/start_flower_app', tags=['Flower Controller'])
@@ -192,10 +196,11 @@ class ControllerAPI:
                     }
                     collection.insert_one(data)
 
-                    threading.Thread(target=_run_flower_app, args=(self,app_name,), daemon=True).start()
-                    logger.info("Flower app thread started.")
+                    self.thread = threading.Thread(target=_run_flower_app, args=(self,app_name,), daemon=True)
+                    self.thread.start()
+                    self.logger.info("Flower app thread started.")
                 except RuntimeError as exc:
-                    logger.error("Could not start Flower app thread: %s", exc)
+                    self.logger.error("Could not start Flower app thread: %s", exc)
                     # Trigger the controller
                     self.controller.flower_controller.ai_tr_plat.raise_internal_error()
                     # self.controller.flower_controller.run_cycle()
@@ -204,54 +209,109 @@ class ControllerAPI:
                     self.controller.flower_controller.ai_tr_plat.raise_internal_error()
                     raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server. Failed to raise task start event: {e}")
                 
-        # Raise flower controller stop training event
-        @self.router.post('/fl_controller/task_stop', tags=['Flower Controller'])
-        async def fl_controller_task_stop():
-            with threading.Lock():
-                try:
-                    self.controller.flower_controller.ai_tr_plat.raise_stop_training()
-                    # self.controller.flower_controller.run_cycle()
-                    self.logger.info("Flower Controller raises stop training event")
-                    return {
-                        "status": "success",
-                        "message": "Flower Controller stop training event raised"
-                    }
-                except Exception as e:
-                    # Trigger the controller
-                    self.controller.flower_controller.ai_tr_plat.raise_internal_error()
-                    raise HTTPException(status_code=500, detail=f"[Error code 100: CONNECTION_ERROR] Error in API Server. Failed to raise stop training event: {e}")
-                
-        def _terminate_training(self):
-            command = "kill -f 'flwr run'"
-            logger.info("Attempting to terminate Flower training process: %s", command)
+        def get_current_run_id(self, app_name: str) -> Optional[str]:
+            """
+            執行 flwr run --list 並解析出最新的 RUN_ID。
+            假設最新的 Run 會出現在列表的第一行或具有特定狀態。
+            """
             try:
-                exit_code = os.system(command)
-                if exit_code == 0:
-                    logger.info("Training process terminated successfully.")
-                    # Trigger the controller
-                    self.controller.flower_controller.ai_tr_plat.raise_termination_complete()
-                    # self.controller.flower_controller.run_cycle()
-                    logger.info("Flower Controller raises termination complete event")
+
+                # Change directory to where the flwr command is available if necessary
+                if app_name == "NES":
+                    work_dir = f"/app/app/network-energy-saving"
                 else:
-                    # Trigger the controller
-                    self.controller.flower_controller.ai_tr_plat.raise_termination_fail()
-                    # self.controller.flower_controller.run_cycle()
-                    logger.warning("Terminate command exited with code %s", exit_code)
+                    work_dir = f"/app/app/{app_name}"
+
+                # 執行指令並取得輸出內容
+                result = subprocess.run(
+                    ["flwr", "list", "--runs"], 
+                    cwd=work_dir,
+                    capture_output=True, 
+                    text=True, 
+                    check=True
+                )
+                
+                output = result.stdout
+                
+                # 典型的 flwr list --runs 輸出格式通常包含表格
+                # 我們尋找看起來像數字或特定 ID 格式的字串
+                # 這裡假設 ID 是純數字，且我們取第一筆找到的資料
+                lines = output.strip().split('\n')
+                
+                if len(lines) < 6:
+                    self.logger.info("目前沒有偵測到任何運行中的 Run。")
+                    return None
+
+                # 簡單解析邏輯：跳過表頭，尋找第一行數據中的第一個欄位
+                # 這裡使用正則表達式尋找每一行開頭的數字 (RUN_ID)
+                for line in lines:
+                    match = re.search(r'\d{10,}', line)
+                    if match:
+                        current_run_id = match.group(0)
+                        return current_run_id
+                        
+                return None
+
+            except subprocess.CalledProcessError as e:
+                self.logger.info(f"執行指令失敗: {e}")
+                return None
+            except Exception as e:
+                self.logger.info(f"發生錯誤: {e}")
+                return None
+    
+        def _terminate_training(self, current_run_id, app_name):
+            # command = "pkill -f 'flwr run'"
+            # command = f"flwr stop {current_run_id}"
+
+            if app_name == "NES":
+                work_dir = f"/app/app/network-energy-saving"
+            else:
+                work_dir = f"/app/app/{app_name}"
+            
+            try:
+                self.logger.info("Attempting to terminate Flower training process: %s", f"flwr stop {current_run_id}")
+                # 執行指令並取得輸出內容
+                result = subprocess.run(
+                    ["flwr", "stop", f"{current_run_id}"], 
+                    cwd=work_dir,
+                    capture_output=True, 
+                    text=True, 
+                    check=True
+                )
+                self.logger.info("Training process terminated successfully. %s", result.stdout)
+                # Trigger the controller
+                self.controller.flower_controller.ai_tr_plat.raise_termination_complete()
+                self.logger.info("Flower Controller raises termination complete event")
             except OSError as exc:
                 # Trigger the controller
                 self.controller.flower_controller.ai_tr_plat.raise_termination_fail()
                 # self.controller.flower_controller.run_cycle()
-                logger.error("Failed to terminate training process: %s", exc)
+                self.logger.error("Failed to terminate training process: %s", result.stdout)
 
         # Raise flower controller terminate training event
         @self.router.post('/fl_controller/terminate_training', tags=['Flower Controller'])
         async def fl_controller_terminate_training():
             with threading.Lock():
                 try:
-                    threading.Thread(target=_terminate_training, daemon=True).start()
-                    logger.info("Termination thread started.")
+                    # Connect to MongoDB and save training parameters
+                    mongodb_url = os.environ.get("AITRCOMMONDB_URI")
+                    client = MongoClient(mongodb_url)
+                    database = client["TrainingConfig"]
+                    collection_name = "current_task"
+                    collection = database[collection_name]
+                    filter = {
+                        "status": "running"
+                    }
+                    item = collection.find_one(filter)
+                    app_name = item["app_name"]
+
+                    # Get current RUN_ID
+                    current_run_id = get_current_run_id(self,app_name)
+                    self.logger.info("Current RUN_ID for app %s: %s", app_name, current_run_id)
+                    _terminate_training(self, current_run_id, app_name)
+                    self.logger.info("Termination thread started.")
                 except RuntimeError as exc:
-                    logger.error("Could not start termination thread: %s", exc)
+                    self.logger.error("Could not start termination thread: %s", exc)
                     # Trigger the controller
                     self.controller.flower_controller.ai_tr_plat.raise_termination_fail()
                     # self.controller.flower_controller.run_cycle()

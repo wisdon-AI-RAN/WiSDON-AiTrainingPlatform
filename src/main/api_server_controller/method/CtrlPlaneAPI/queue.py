@@ -58,9 +58,7 @@ class TaskQueueAPI:
             try:
                 # Trigger the controller 
                 self.task_queue.fl_training_queue_delete(self.controller.delete_name)
-                api_server_url = os.environ.get("API_SERVER_URL", "http://localhost:9005")
-                controller_url = f"{api_server_url}/fl_controller/task_stop"
-                response = requests.post(controller_url, timeout=10)
+                self.controller.flower_controller.ai_tr_plat.raise_stop_training()
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"[Error Code 100: CONNECTION_ERROR]: Failed to delete task: {e}")
             
@@ -77,10 +75,6 @@ class TaskQueueAPI:
                 # Trigger the controller 
                 self.task_queue.fl_training_queue_task_finish()
                 self.controller.task_queue_controller.ai_tr_plat.raise_task_complete()
-                # The controller need to run cycle 3 times
-                # self.controller.task_queue_controller.run_cycle()
-                # self.controller.task_queue_controller.run_cycle()
-                # self.controller.task_queue_controller.run_cycle()
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"[Error Code 100: CONNECTION_ERROR]: Failed to complete task: {e}")
             

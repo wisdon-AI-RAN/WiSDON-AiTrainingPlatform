@@ -2,11 +2,11 @@ import sys, os
 import requests
 
 class CallBackFunc():
-    def get_app_status():
+    def get_app_status(self):
         api_server_url = os.environ.get("API_SERVER_URL", "http://localhost:9005")
         controller_url = f"{api_server_url}/fl_training_task_queue/is_delete_running"
         try:
-            response = requests.post(controller_url, timeout=10)
+            response = requests.get(controller_url, timeout=10)
             print("Get App Status")
             return response.json()["is_delete_running"]
         except Exception as e:

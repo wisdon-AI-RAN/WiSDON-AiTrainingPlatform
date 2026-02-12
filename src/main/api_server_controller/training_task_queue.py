@@ -65,17 +65,14 @@ class TrainingTaskQueue:
         Define functions called by api functions.
         Delete the current or waiting federated learning task.
         """
-        try:
-            # Check whether the task need to delete
-            if self.fl_current_training_task == task_name:
-                self.logger.info(f'FL Training Event Delete : {self.fl_current_training_task} !')
-                # del self.fl_training_participants[self.fl_current_training_task]
-                self.fl_current_training_task = None
-            elif task_name not in self.fl_training_delete_list:
-                self.fl_training_delete_list.append(task_name)
-            return True
-        except queue.Empty:
-            return False
+        # Check whether the task need to delete
+        if self.fl_current_training_task == task_name:
+            self.logger.info(f'FL Training Event Delete : {self.fl_current_training_task} !')
+            # del self.fl_training_participants[self.fl_current_training_task]
+            self.fl_current_training_task = None
+        elif task_name not in self.fl_training_delete_list:
+            self.fl_training_delete_list.append(task_name)
+        return True
         
     def fl_training_queue_task_finish(self):
         """

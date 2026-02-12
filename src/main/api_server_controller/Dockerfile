@@ -10,7 +10,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --default-timeout=900 -r requirements.txt
 
 # Install curl for healthcheck
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y \
+    curl \
+    procps \
+    && rm -rf /var/lib/apt/lists/*
 
 # # Copy the application code
 # COPY . .
